@@ -28,7 +28,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using Vocaluxe.Lib.Input;
 using Vocaluxe.Lib.Playlist;
@@ -104,6 +106,11 @@ namespace Vocaluxe.Base.Server
 
                 WebApplicationBuilder builder = WebApplication.CreateBuilder();
                 builder.Logging.ClearProviders();
+
+                // Shutting down waits for requests that are still running, and /api/events is a
+                // stream that by design never ends on its own. With the default 30 seconds, quitting
+                // the game just sat there as long as a single phone still had the page open.
+                builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(2));
                 builder.WebHost.UseUrls("http://0.0.0.0:" + port + "/");
                 // The REST API reads request bodies and writes responses synchronously via
                 // DataContractJsonSerializer. Kestrel disallows synchronous I/O by default, which made

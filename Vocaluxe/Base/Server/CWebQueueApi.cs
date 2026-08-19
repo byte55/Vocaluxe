@@ -25,6 +25,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using VocaluxeLib;
 using VocaluxeLib.Log;
 using SkiaSharp;
@@ -447,7 +449,13 @@ namespace Vocaluxe.Base.Server
                 ctx.Response.Headers["X-Accel-Buffering"] = "no";
 
                 long lastSent = -1;
-                CancellationToken token = ctx.RequestAborted;
+
+                // React to the game shutting down as well, not just to the client leaving. Without
+                // this the loop below keeps a shutdown waiting for its full timeout.
+                IHostApplicationLifetime lifetime = ctx.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+                using (var stopping = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, lifetime.ApplicationStopping))
+                {
+                CancellationToken token = stopping.Token;
 
                 try
                 {
@@ -478,7 +486,8 @@ namespace Vocaluxe.Base.Server
                 }
                 catch (OperationCanceledException)
                 {
-                    // Client navigated away or locked the phone. Nothing to do.
+                    // Client navigated away, locked the phone, or the game is shutting down.
+                }
                 }
             });
         }
