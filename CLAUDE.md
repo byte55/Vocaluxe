@@ -175,6 +175,13 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
 - **Gäste dürfen sich selbst anlegen.** Neue Profile landen als
   `TR_USERROLE_GUEST` in `~/.config/Vocaluxe/Profiles/` und sammeln sich dort
   über mehrere Events an; gelegentlich aufräumen.
+- **Zu zweit singen geht bei jedem Song**, nicht nur bei Duetten — Vocaluxe
+  wertet dann beide auf derselben Stimme.
+- **Der Schwierigkeitsgrad** wird im Tab „Ich" pro Profil gesetzt und wirkt
+  sofort, auch im laufenden Song.
+- **Ein Song lässt sich nicht starten, solange einer läuft.** Das ist kein
+  Komfortverzicht, sondern verhindert einen Absturz (Details in
+  `docs/web-queue.md`). Warten, bis die Auswertung erscheint.
 - **Die alte jQuery-Mobile-Oberfläche** liegt weiterhin unter `/legacy`.
 
 ### Admin werden

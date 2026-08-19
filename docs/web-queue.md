@@ -164,6 +164,40 @@ Fehlerfälle geprüft: ohne Session 401, fremder Eintrag 403, unbekannter Song
 404, mehr als zwei Sänger 400. Live-Updates über SSE senden bei Änderung sofort
 einen neuen Frame.
 
+### Nachgereicht
+
+- **Zu zweit singen geht bei jedem Song**, nicht nur bei markierten Duetten.
+  Vocaluxe wertet dann beide auf derselben Stimme — die Reihenfolge entscheidet
+  weiterhin über die Mikrofonzuordnung.
+- **Schwierigkeitsgrad pro Profil** im Tab „Ich". `CGame` liest ihn live pro
+  Note (`CProfiles.GetDifficulty`, `Vocaluxe/Base/CGame.cs:321`), die Änderung
+  wirkt also sofort — auch mitten im Song.
+
+### Gefundener Absturz: Start auf einen laufenden Song
+
+Wird ein Song gestartet, während schon einer läuft, **stirbt Vocaluxe**. Der
+Sing-Screen bekommt die `CGame`-Queue unter den Füßen weggezogen, findet seinen
+„aktuellen" Song nicht mehr, ruft `_FinishedSinging` und blendet damit aus
+`CGraphics._FinishScreenFading` heraus erneut um — ein reentranter Fade, der mit
+`NullReferenceException` endet:
+
+```
+CGraphics.Draw -> _FinishScreenFading -> CScreenSing.OnShowFinish
+  -> _NextSong -> _LoadCurrentSong -> _FinishedSinging
+  -> CParty.FinishedSinging -> CGraphics.FadeTo -> _FinishScreenFading  (!)
+```
+
+Der Prozess beendet sich mit Exit-Code 0, im Log steht nur eine `[Fatal]`-Zeile.
+Bei einem Event passiert genau das, sobald jemand ungeduldig auf „starten"
+tippt. `StartSongRequest` lehnt den Start deshalb ab, solange
+`CGraphics.CurrentScreen` **oder** `NextScreen` der Sing-Screen ist — Letzteres
+fängt den zweiten Tap während der Einblendung ab.
+
+Nebenwirkung: Ein abgebrochener Song (Escape statt Durchsingen) erreicht den
+Score-Screen nicht, sein Eintrag bleibt deshalb auf `Playing` stehen. Blockieren
+tut das nichts — geprüft wird der echte Bildschirm, nicht der Eintragszustand,
+und `MarkPlaying` schließt beim nächsten Start ohnehin auf.
+
 ### Bewusst anders als im Entwurf
 
 **Starten darf jeder Angemeldete**, nicht nur ein Admin. Vocaluxe gibt Gästen
