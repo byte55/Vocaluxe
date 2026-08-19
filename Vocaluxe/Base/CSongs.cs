@@ -54,6 +54,17 @@ namespace Vocaluxe.Base
 
         public static bool SongsLoaded { get; private set; }
 
+        /// <summary>
+        ///     Bumped whenever the library was rebuilt. Lets readers outside the main thread notice
+        ///     that a cached view of the song list is stale. Volatile because they read it without
+        ///     any lock.
+        /// </summary>
+        public static int LoadGeneration
+        {
+            get { return _LoadGeneration; }
+        }
+        private static volatile int _LoadGeneration;
+
         public static bool CoverLoaded
         {
             get
@@ -407,6 +418,7 @@ namespace Vocaluxe.Base
 
                 Category = -1;
                 SongsLoaded = true;
+                _LoadGeneration++;
 
                 switch (CConfig.Config.Theme.CoverLoading)
                 {

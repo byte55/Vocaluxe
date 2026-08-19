@@ -21,6 +21,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using SQLitePCL;
 using Vocaluxe.Base;
@@ -52,6 +53,12 @@ namespace Vocaluxe
             // Themes, Fonts, ...) resolve regardless of the launch working directory - e.g. an
             // AppImage's AppRun, a desktop shortcut, or being started from another folder.
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+
+            // .NET Framework had the Windows codepages built in; .NET ships only UTF-8, ASCII and
+            // UTF-16 unless this provider is registered. Without it Encoding.GetEncoding(1252)
+            // throws, and every song whose txt carries "#ENCODING:CP1252" (or CP1250) drops out of
+            // the library with nothing but a line in Song.log.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 #if !DEBUG
             AppDomain.CurrentDomain.UnhandledException += UnhandledExceptionHandler;
 #endif

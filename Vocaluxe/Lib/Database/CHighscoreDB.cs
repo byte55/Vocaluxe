@@ -19,7 +19,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using Community.CsharpSqlite;
 using Vocaluxe.Base;
 using VocaluxeLib;
 using VocaluxeLib.Log;
@@ -785,6 +784,17 @@ namespace Vocaluxe.Lib.Database
         }
 
         /// <summary>
+        ///     Reads a column that was stored as CP1252 bytes and returns it as a normal string.
+        /// </summary>
+        private static string _FromCp1252(SqliteDataReader reader, int column)
+        {
+            if (reader.IsDBNull(column))
+                return "Someone";
+            var bytes = (byte[])reader.GetValue(column);
+            return bytes.Length == 0 ? "Someone" : Encoding.GetEncoding(1252).GetString(bytes);
+        }
+
+        /// <summary>
         ///     Converts a USDX 1.01 or CMD 1.01 database to Vocaluxe format
         /// </summary>
         /// <param name="filePath">Database file path</param>
@@ -839,72 +849,41 @@ namespace Vocaluxe.Lib.Database
                     var scores = new List<SData>();
                     var songs = new List<SData>();
 
-                    Sqlite3.sqlite3 oldDB;
-                    int res = Sqlite3.sqlite3_open(filePath, out oldDB);
-
-                    if (res != Sqlite3.SQLITE_OK)
-                        CLog.Error("Error opening Database: " + filePath + " (" + Sqlite3.sqlite3_errmsg(oldDB) + ")");
-                    else
+                    // The 1.01 databases store their text in CP1252, but the column type is TEXT, so
+                    // any reader that decodes for us would mangle it. CAST(... AS BLOB) hands out the
+                    // stored bytes untouched and we do the conversion ourselves.
+                    using (var raw = new SqliteCommand())
                     {
-                        var stmt = new Sqlite3.Vdbe();
-                        res = Sqlite3.sqlite3_prepare_v2(oldDB, "SELECT id, Artist, Title FROM Songs", -1, ref stmt, 0);
+                        raw.Connection = connection;
 
-                        if (res != Sqlite3.SQLITE_OK)
-                            CLog.Error("Error query Database: " + filePath + " (" + Sqlite3.sqlite3_errmsg(oldDB) + ")");
-                        else
+                        raw.CommandText = "SELECT id, CAST(Artist AS BLOB), CAST(Title AS BLOB) FROM Songs";
+                        using (SqliteDataReader reader = raw.ExecuteReader())
                         {
-                            //Sqlite3.sqlite3_step(Stmt);
-                            Encoding utf8 = Encoding.UTF8;
-                            Encoding cp1252 = Encoding.GetEncoding(1252);
-
-                            while (Sqlite3.sqlite3_step(stmt) == Sqlite3.SQLITE_ROW)
+                            while (reader.Read())
                             {
-                                var data = new SData {Id = Sqlite3.sqlite3_column_int(stmt, 0)};
-
-                                byte[] bytes = Sqlite3.sqlite3_column_rawbytes(stmt, 1);
-                                data.Str1 = bytes != null ? utf8.GetString(Encoding.Convert(cp1252, utf8, bytes)) : "Someone";
-
-                                bytes = Sqlite3.sqlite3_column_rawbytes(stmt, 2);
-                                data.Str2 = bytes != null ? utf8.GetString(Encoding.Convert(cp1252, utf8, bytes)) : "Someone";
-
-                                songs.Add(data);
+                                songs.Add(new SData
+                                    {
+                                        Id = reader.GetInt32(0),
+                                        Str1 = _FromCp1252(reader, 1),
+                                        Str2 = _FromCp1252(reader, 2)
+                                    });
                             }
-                            Sqlite3.sqlite3_finalize(stmt);
                         }
 
-                        stmt = new Sqlite3.Vdbe();
-
-                        // ReSharper disable ConvertIfStatementToConditionalTernaryExpression
-                        if (!dateExists)
-                            // ReSharper restore ConvertIfStatementToConditionalTernaryExpression
-                            res = Sqlite3.sqlite3_prepare_v2(oldDB, "SELECT id, PlayerName FROM Scores", -1, ref stmt, 0);
-                        else
-                            res = Sqlite3.sqlite3_prepare_v2(oldDB, "SELECT id, PlayerName, Date FROM Scores", -1, ref stmt, 0);
-
-                        if (res != Sqlite3.SQLITE_OK)
-                            CLog.Error("Error query Database: " + filePath + " (" + Sqlite3.sqlite3_errmsg(oldDB) + ")");
-                        else
+                        raw.CommandText = dateExists
+                                              ? "SELECT id, CAST(PlayerName AS BLOB), Date FROM Scores"
+                                              : "SELECT id, CAST(PlayerName AS BLOB) FROM Scores";
+                        using (SqliteDataReader reader = raw.ExecuteReader())
                         {
-                            //Sqlite3.sqlite3_step(Stmt);
-                            Encoding utf8 = Encoding.UTF8;
-                            Encoding cp1252 = Encoding.GetEncoding(1252);
-
-                            while (Sqlite3.sqlite3_step(stmt) == Sqlite3.SQLITE_ROW)
+                            while (reader.Read())
                             {
-                                var data = new SData {Id = Sqlite3.sqlite3_column_int(stmt, 0)};
-
-                                byte[] bytes = Sqlite3.sqlite3_column_rawbytes(stmt, 1);
-                                data.Str1 = bytes != null ? utf8.GetString(Encoding.Convert(cp1252, utf8, bytes)) : "Someone";
-
-                                if (dateExists)
-                                    data.Ticks = _UnixTimeToTicks(Sqlite3.sqlite3_column_int(stmt, 2));
-
+                                var data = new SData {Id = reader.GetInt32(0), Str1 = _FromCp1252(reader, 1)};
+                                if (dateExists && !reader.IsDBNull(2))
+                                    data.Ticks = _UnixTimeToTicks(reader.GetInt32(2));
                                 scores.Add(data);
                             }
-                            Sqlite3.sqlite3_finalize(stmt);
                         }
                     }
-                    Sqlite3.sqlite3_close(oldDB);
 
                     SqliteTransaction transaction = connection.BeginTransaction();
                     command.Transaction = transaction;

@@ -30,29 +30,6 @@
     <RuntimeIdentifiers>linux-x64;win-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
-  <!-- Windows-only backends dropped for the unified cross-platform codebase.
-       OpenGL replaces Direct3D, PortAudio replaces DirectSound, the WinForms
-       splash/error-reporter are replaced by logging. -->
-  <ItemGroup>
-    <Compile Remove="Lib\Draw\CDirect3D.cs" />
-    <Compile Remove="Lib\Draw\CDrawWinForm.cs" />
-    <Compile Remove="Lib\Sound\Record\DirectSound\**\*.cs" />
-    <Compile Remove="Lib\Webcam\CAForgeNet.cs" />
-    <Compile Remove="Reporting\**\*.cs" />
-    <Compile Remove="CSplashScreen.cs" />
-    <!-- S3: only the PortAudio backend is migrated for the cross-platform build.
-         GStreamer (GstSharp net45-only) and OpenAL (OpenTK 1.x audio, removed in OpenTK 4). -->
-    <Compile Remove="Lib\Sound\Playback\GstreamerSharp\**\*.cs" />
-    <Compile Remove="Lib\Sound\Playback\OpenAL\**\*.cs" />
-    <!-- Orphaned/legacy code: not referenced anywhere and absent from the original build. -->
-    <Compile Remove="Animations\**\*.cs" />
-    <!-- Orphaned duplicate of Base/Fonts/CGlyph.cs; its namespace Vocaluxe.Base.Font even
-         shadowed the System.Drawing.Font type. The real glyph code lives in Base/Fonts. -->
-    <Compile Remove="Base\Font\**\*.cs" />
-    <EmbeddedResource Remove="Reporting\**\*.resx" />
-    <!-- S2: the WCF ICWebservice contract was removed; CWebservice is now an ASP.NET Core
-         (Kestrel) endpoint mapper, hosted by CVocaluxeServer. -->
-  </ItemGroup>
 
   <!-- S2: ASP.NET Core (Kestrel) for the browser remote-control webserver -->
   <ItemGroup>
@@ -81,7 +58,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VocaluxeLib\VocaluxeLib.csproj" />
-    <ProjectReference Include="..\Community.CsharpSqlite\Community.CsharpSqlite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

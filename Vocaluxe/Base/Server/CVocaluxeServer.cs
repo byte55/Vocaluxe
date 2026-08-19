@@ -520,10 +520,54 @@ namespace Vocaluxe.Base.Server
         ///     Paged, filtered song list for the web UI. Replaces shipping the entire library on
         ///     every page load.
         /// </summary>
+        /// <summary>
+        ///     Sorted once per library load and then read directly by the request threads. The array
+        ///     is never modified after publishing, so searching it needs no lock and -- more to the
+        ///     point -- no trip through the render loop: a search used to cost a frame slot plus a
+        ///     full sort of the library, for every keystroke on every phone.
+        /// </summary>
+        private static volatile SSongListEntry[] _SongSnapshot;
+        private static int _SongSnapshotGeneration = -1;
+
+        /// <summary>
+        ///     Builds the sorted view. Runs on the main thread, because that is where the song list
+        ///     belongs.
+        /// </summary>
+        public static SSongListEntry[] BuildSongSnapshot()
+        {
+            SSongListEntry[] snapshot = CSongs.AllSongs
+                                              .OrderBy(song => song.Artist, StringComparer.OrdinalIgnoreCase)
+                                              .ThenBy(song => song.Title, StringComparer.OrdinalIgnoreCase)
+                                              .Select(song => new SSongListEntry
+                                                  {
+                                                      SongId = song.ID,
+                                                      Title = song.Title,
+                                                      Artist = song.Artist,
+                                                      IsDuet = song.IsDuet,
+                                                      Year = song.Year,
+                                                      Genre = song.Genres.FirstOrDefault(),
+                                                      Language = song.Languages.FirstOrDefault()
+                                                  }).ToArray();
+            _SongSnapshotGeneration = CSongs.LoadGeneration;
+            _SongSnapshot = snapshot;
+            return snapshot;
+        }
+
+        /// <summary>
+        ///     Paged, filtered song list for the web UI. Replaces shipping the entire library on
+        ///     every page load. Safe to call from a request thread.
+        /// </summary>
         public static SSongSearchResult SearchSongs(string query, int offset, int limit)
         {
-            IEnumerable<CSong> songs = CSongs.AllSongs;
+            SSongListEntry[] all = _SongSnapshot;
+            if (all == null || _SongSnapshotGeneration != CSongs.LoadGeneration)
+            {
+                // Either the first search or the library was rescanned. Rebuilding touches the song
+                // list, so it has to happen on the main thread -- once, not per request.
+                all = DoTask(BuildSongSnapshot);
+            }
 
+            IEnumerable<SSongListEntry> songs = all;
             if (!string.IsNullOrWhiteSpace(query))
             {
                 string q = query.Trim();
@@ -532,9 +576,7 @@ namespace Vocaluxe.Base.Server
                                         || (song.Artist != null && song.Artist.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0));
             }
 
-            List<CSong> matches = songs.OrderBy(song => song.Artist, StringComparer.OrdinalIgnoreCase)
-                                       .ThenBy(song => song.Title, StringComparer.OrdinalIgnoreCase)
-                                       .ToList();
+            SSongListEntry[] matches = ReferenceEquals(songs, all) ? all : songs.ToArray();
 
             if (offset < 0)
                 offset = 0;
@@ -543,17 +585,8 @@ namespace Vocaluxe.Base.Server
 
             return new SSongSearchResult
                 {
-                    Total = matches.Count,
-                    Items = matches.Skip(offset).Take(limit).Select(song => new SSongListEntry
-                        {
-                            SongId = song.ID,
-                            Title = song.Title,
-                            Artist = song.Artist,
-                            IsDuet = song.IsDuet,
-                            Year = song.Year,
-                            Genre = song.Genres.FirstOrDefault(),
-                            Language = song.Languages.FirstOrDefault()
-                        }).ToArray()
+                    Total = matches.Length,
+                    Items = matches.Skip(offset).Take(limit).ToArray()
                 };
         }
 

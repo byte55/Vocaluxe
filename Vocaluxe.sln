@@ -21,8 +21,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PitchTracker", "PitchTracke
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{8EDF4429-251A-416D-BB68-93F227191BCF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Community.CsharpSqlite", "Community.CsharpSqlite\Community.CsharpSqlite.csproj", "{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		DebugLinux|x64 = DebugLinux|x64
@@ -300,48 +298,6 @@ Global
 		{8EDF4429-251A-416D-BB68-93F227191BCF}.Release|x86.Build.0 = Release|Any CPU
 		{8EDF4429-251A-416D-BB68-93F227191BCF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8EDF4429-251A-416D-BB68-93F227191BCF}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugLinux|x64.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugLinux|x64.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugLinux|x86.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugLinux|x86.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugLinux|Any CPU.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugLinux|Any CPU.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugWin|x64.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugWin|x64.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugWin|x86.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugWin|x86.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugWin|Any CPU.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.DebugWin|Any CPU.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.InstallerWin|x64.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.InstallerWin|x64.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.InstallerWin|x86.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.InstallerWin|x86.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.InstallerWin|Any CPU.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.InstallerWin|Any CPU.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseLinux|x64.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseLinux|x64.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseLinux|x86.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseLinux|x86.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseLinux|Any CPU.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseLinux|Any CPU.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseWin|x64.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseWin|x64.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseWin|x86.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseWin|x86.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseWin|Any CPU.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.ReleaseWin|Any CPU.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Debug|x64.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Debug|x86.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Release|x64.ActiveCfg = Release|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Release|x64.Build.0 = Release|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Release|x86.ActiveCfg = Release|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Release|x86.Build.0 = Release|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E2C2C47C-0569-4965-ACEC-F4C81B88E1B3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

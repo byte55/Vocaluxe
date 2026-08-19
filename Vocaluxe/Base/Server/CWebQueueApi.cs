@@ -245,9 +245,11 @@ namespace Vocaluxe.Base.Server
 
         private static void _MapSongs(WebApplication app)
         {
+            // No DoTask: the search reads an immutable snapshot of the library and only falls back
+            // to the main thread when that snapshot has to be (re)built.
             app.MapGet("/api/songs", (string q, int? offset, int? limit) =>
             {
-                SSongSearchResult result = CVocaluxeServer.DoTask(CVocaluxeServer.SearchSongs, q ?? "", offset ?? 0, limit ?? 50);
+                SSongSearchResult result = CVocaluxeServer.SearchSongs(q ?? "", offset ?? 0, limit ?? 50);
                 return _Json(result);
             });
         }
