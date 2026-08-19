@@ -1,8 +1,9 @@
 # Vocaluxe — lokaler Linux-Build (.NET 10)
 
 Fork von [Vocaluxe/Vocaluxe](https://github.com/Vocaluxe/Vocaluxe), Remote ist
-`byte55/Vocaluxe`. Gearbeitet wird auf **`feature/768-net10-crossplatform`**,
-dem .NET-10-Cross-Platform-Port.
+`byte55/Vocaluxe`. Gearbeitet wird auf **`feature/web-queue`** — abgezweigt von
+`feature/768-net10-crossplatform`, dem .NET-10-Cross-Platform-Port, der weiter
+die Grundlage bildet.
 
 ## Priorität
 
@@ -435,6 +436,5 @@ anschlägt, wird hier justiert — nicht am Mixer.
 - **Pegel final einstellen**: beim *Singen* justieren, nicht beim Sprechen —
   Sprechen ist deutlich leiser und führt zu einer zu hohen Einstellung, die
   dann beim Singen clippt. Zielbereich 60–70 % Spitze.
-- **Zuordnung in Vocaluxe** noch nicht durchgeführt, siehe Abschnitt oben.
 - Theme-Videos (`BG_Video.mp4`, `IntroIn/Mid/Out.mp4`) fehlen im Repo, das Log
   meldet „Expect visual problems". Rein kosmetisch.
