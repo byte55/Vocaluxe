@@ -221,6 +221,9 @@ namespace Vocaluxe
                     // Init Profiles
                     using (CBenchmark.Time("Init Profiles"))
                     {
+                        // Before loading them: what gets saved should be the state the last session
+                        // left behind, not one this run has already touched.
+                        CProfileBackup.Run();
                         CProfiles.Init();
                     }
 
