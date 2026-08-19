@@ -7,9 +7,6 @@
 (function () {
     'use strict';
 
-    // Below this many entries a search box is just noise — you see every name at a glance.
-    var SEARCH_THRESHOLD = 6;
-
     var SESSION_KEY = 'karaoke.session';
     var PROFILE_KEY = 'karaoke.profile';
     var PAGE_SIZE = 40;
@@ -111,11 +108,8 @@
     function renderProfiles() {
         if (!state.profiles.length) {
             el.profileList.innerHTML = '<div class="loading">Noch keine Profile — leg unten eins an.</div>';
-            el.profileSearch.hidden = true;
             return;
         }
-
-        el.profileSearch.hidden = state.profiles.length < SEARCH_THRESHOLD;
 
         var shown = state.profiles.filter(function (p) { return matches(p.playerName, state.profileQuery); });
         if (!shown.length) {
@@ -368,8 +362,6 @@
 
     function renderPartnerList() {
         var candidates = partnerCandidates();
-        el.partnerSearch.hidden = candidates.length < SEARCH_THRESHOLD;
-
         var shown = candidates.filter(function (p) { return matches(p.playerName, state.partnerQuery); });
 
         // "Alone" stays pinned at the top and is never filtered away — it is the default, and
@@ -499,7 +491,14 @@
 
             var songBtn = e.target.closest('.song-item');
             if (songBtn) {
-                try { openSheet(JSON.parse(songBtn.dataset.song)); } catch (err) { /* ignore */ }
+                // Swallowing errors here once hid a broken sheet completely: the tap did nothing and
+                // the console stayed empty. Report it instead.
+                try {
+                    openSheet(JSON.parse(songBtn.dataset.song));
+                } catch (err) {
+                    console.error('openSheet failed', err);
+                    toast('Song konnte nicht geöffnet werden.', true);
+                }
             }
 
             var remove = e.target.closest('[data-remove]');
