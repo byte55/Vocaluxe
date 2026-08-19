@@ -192,16 +192,40 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
   `docs/web-queue.md`). Warten, bis die Auswertung erscheint.
 - **Die alte jQuery-Mobile-Oberfläche** liegt weiterhin unter `/legacy`.
 
+### PIN: ein Profil für sich beanspruchen
+
+Profile sind absichtlich offen — antippen genügt. Wer sein Profil für sich
+haben will, setzt im Tab „Ich" eine **PIN** (4–10 Ziffern). Danach kommt ohne
+sie niemand mehr rein, und beim Setzen fliegen alle anderen Sitzungen auf
+diesem Profil sofort raus.
+
+Falsche Eingaben werden langsamer: drei Versuche frei, danach 2, 4, 8 … Sekunden
+bis maximal 30, gezählt pro Profil und nach einer erfolgreichen Anmeldung
+zurückgesetzt. Niemand wird dauerhaft ausgesperrt.
+
+**PIN vergessen?** Der einzige Weg zurück führt über die Profildatei: Vocaluxe
+beenden, in `~/.config/Vocaluxe/Profiles/<Name>.xml` die Zeilen
+`<PasswordHash>` und `<PasswordSalt>` löschen, neu starten.
+
 ### Admin werden
 
-Umsortieren, Überspringen und das Löschen fremder Einträge brauchen
-Adminrechte. Die kann man sich über die Weboberfläche **nicht** selbst geben
-(`setUserRole` verlangt genau das Recht, das einem fehlt). Von Hand:
+Adminrechte (umsortieren, überspringen, fremde Einträge löschen) werden von
+Hand vergeben — es gibt bewusst keinen Weg über die Oberfläche.
 
-```bash
-# Vocaluxe beenden, dann in ~/.config/Vocaluxe/Profiles/<Name>.xml:
-#   <UserRole>TR_USERROLE_ADMIN</UserRole>
-```
+**Die Reihenfolge ist wichtig, sonst manövrierst du dich in eine Sackgasse:**
+
+1. Mit dem Profil anmelden und im Tab „Ich" **erst die PIN setzen**.
+2. Vocaluxe beenden.
+3. In `~/.config/Vocaluxe/Profiles/<Name>.xml` die Rolle setzen:
+   `<UserRole>TR_USERROLE_ADMIN</UserRole>`
+4. Vocaluxe starten.
+
+Grund: **Rechte gelten nur für Profile mit PIN.** Ein Admin-Profil ohne PIN hat
+keinerlei Rechte — sonst wäre es eine offene Tür, weil jeder den Namen antippen
+und die Rechte erben könnte. Aus demselben Grund kann sich ein Admin-Profil ohne
+PIN auch **selbst keine geben**; du müsstest die Rolle wieder herausnehmen, die
+PIN setzen und die Rolle erneut eintragen. Eine gesetzte PIN lässt sich bei
+Admin-Profilen zudem nicht mehr entfernen, nur ändern.
 
 Die mitgelieferten Profile (Advanced, Beginner, Expert) liegen im
 Programmordner unter `dist/Vocaluxe/Profiles/`, selbst angelegte in
