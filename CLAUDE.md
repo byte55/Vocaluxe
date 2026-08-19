@@ -175,6 +175,14 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
 - **Gäste dürfen sich selbst anlegen.** Neue Profile landen als
   `TR_USERROLE_GUEST` in `~/.config/Vocaluxe/Profiles/` und sammeln sich dort
   über mehrere Events an; gelegentlich aufräumen.
+- **Profilbilder nur aus dem mitgelieferten Bestand.** Zur Auswahl stehen die 23
+  Avatare aus `Profiles/Vocaluxe Avatars 2024 (Official)/`, wählbar beim Anlegen
+  und im Tab „Ich". **Hochladen ist bewusst abgeschaltet** — sowohl `/sendPhoto`
+  (403) als auch der Bild-Teil von `/sendProfile`, der vorher *ohne jede Session*
+  ein beliebiges Bild annahm. Hochgeladene Fotos landeten sonst als Vollbild in
+  der Diashow des Score-Screens, also auf dem Beamer. Rückgängig zu machen an
+  den beiden kommentierten Stellen in `CWebservice.cs` und
+  `CVocaluxeServer.SendProfileData`.
 - **Zu zweit singen geht bei jedem Song**, nicht nur bei Duetten — Vocaluxe
   wertet dann beide auf derselben Stimme.
 - **Der Schwierigkeitsgrad** wird im Tab „Ich" pro Profil gesetzt und wirkt

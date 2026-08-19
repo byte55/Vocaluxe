@@ -173,6 +173,28 @@ einen neuen Frame.
   Note (`CProfiles.GetDifficulty`, `Vocaluxe/Base/CGame.cs:321`), die Änderung
   wirkt also sofort — auch mitten im Song.
 
+### Avatare — und warum kein Upload
+
+Profilbilder kommen ausschließlich aus dem mitgelieferten Bestand (23 Stück in
+`Profiles/Vocaluxe Avatars 2024 (Official)/`), wählbar beim Anlegen, im Tab
+„Ich" und sichtbar neben jedem Namen auf dem Anmeldebildschirm. Vorher bekam
+jedes selbst angelegte Profil kommentarlos den ersten Avatar der Liste.
+
+Ausgeliefert wird über `GET /api/avatars/{id}/image`: auf 192 px skaliert, als
+WebP, im Speicher gecacht und mit `max-age` versehen — 5 KB statt 58 KB pro
+Bild, 143 KB statt 1,3 MB für die ganze Galerie.
+
+Die neue API hat **keinen Upload-Pfad**. Zwei alte gab es, beide sind zu:
+
+| Endpunkt | vorher | jetzt |
+|---|---|---|
+| `POST /sendPhoto` | Foto landet in der Diashow hinter dem Score-Screen | 403 |
+| `POST /sendProfile` | mit leerer `ProfileId` greift die Rechteprüfung nicht — **jeder ohne Session** konnte ein Profil mit beliebigem Base64-Bild anlegen | Bild wird ignoriert, mitgelieferter Avatar wird gesetzt |
+
+Profile lassen sich über `/sendProfile` weiterhin anlegen und bearbeiten, die
+Legacy-Seite funktioniert also bis auf das Bild weiter. Beide Stellen sind im
+Code kommentiert, falls eine Installation Uploads zurückholen will.
+
 ### Gefundener Absturz: Start auf einen laufenden Song
 
 Wird ein Song gestartet, während schon einer läuft, **stirbt Vocaluxe**. Der
