@@ -235,6 +235,20 @@ zurückgesetzt. Niemand wird dauerhaft ausgesperrt.
 beenden, in `~/.config/Vocaluxe/Profiles/<Name>.xml` die Zeilen
 `<PasswordHash>` und `<PasswordSalt>` löschen, neu starten.
 
+### Profil-Backup
+
+Beim Start legt Vocaluxe eine Kopie von `~/.config/Vocaluxe/Profiles/` unter
+`~/.config/Vocaluxe/ProfileBackups/JJJJ-MM-TT/` an — **höchstens einmal am
+Tag**, und bevor die Profile geladen werden. Gesichert wird also der Stand, den
+die letzte Sitzung hinterlassen hat.
+
+Die 30 neuesten Kopien bleiben liegen, ältere werden beim nächsten Backup
+entfernt. Gelöscht wird nur, was als Datum lesbar ist — was du sonst dort
+ablegst, bleibt unangetastet.
+
+Wiederherstellen: Vocaluxe beenden, den Inhalt des gewünschten Datumsordners
+zurück nach `~/.config/Vocaluxe/Profiles/` kopieren, neu starten.
+
 ### Admin werden
 
 Adminrechte (umsortieren, überspringen, fremde Einträge löschen) werden von
