@@ -12,3 +12,6 @@ Version 2:
 
 Add: Elements for up to 6 players! (Texts and statics!)
 ++++++++++
+#5
+added TextNextUpLabel, TextNextUpSong, TextNextUpSingers and TextNextUpTimer
+(shows who is up next from the web queue, with a countdown)

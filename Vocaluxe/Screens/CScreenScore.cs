@@ -16,6 +16,7 @@
 #endregion
 
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -33,10 +34,28 @@ namespace Vocaluxe.Screens
         // Version number for theme files. Increment it, if you've changed something on the theme files!
         protected override int _ScreenVersion
         {
-            get { return 4; }
+            get { return 5; }
         }
 
         private const string _TextSong = "TextSong";
+
+        private const string _TextNextUpLabel = "TextNextUpLabel";
+        private const string _TextNextUpSong = "TextNextUpSong";
+        private const string _TextNextUpSingers = "TextNextUpSingers";
+        private const string _TextNextUpTimer = "TextNextUpTimer";
+
+        /// <summary>
+        ///     How long the announcement counts down before it starts blinking. Nothing happens
+        ///     automatically when it runs out — somebody has to be standing at the microphone, and
+        ///     only a person can tell.
+        /// </summary>
+        private const int _NextUpSeconds = 30;
+
+        private readonly Stopwatch _NextUpTimer = new Stopwatch();
+
+        /// <summary>Waiting entries as of entering this screen, so browsing stays stable.</summary>
+        private CSongRequest[] _NextUp = new CSongRequest[0];
+        private int _NextUpIndex;
 
         private const string _ScreenSettingShortScore = "ScreenSettingShortScore";
         private const string _ScreenSettingShortRating = "ScreenSettingShortRating";
@@ -62,7 +81,7 @@ namespace Vocaluxe.Screens
         {
             base.Init();
 
-            var texts = new List<string> {_TextSong};
+            var texts = new List<string> {_TextSong, _TextNextUpLabel, _TextNextUpSong, _TextNextUpSingers, _TextNextUpTimer};
 
             _BuildTextStrings(ref texts);
 
@@ -92,10 +111,24 @@ namespace Vocaluxe.Screens
             {
                 switch (keyEvent.Key)
                 {
+                    case Keys.Enter:
+                        // Starts whoever is announced. Falls back to the old behaviour when the
+                        // queue is empty, so the screen keeps working without the web queue.
+                        if (!_StartAnnounced())
+                            _LeaveScreen();
+                        break;
+
                     case Keys.Escape:
                     case Keys.Back:
-                    case Keys.Enter:
                         _LeaveScreen();
+                        break;
+
+                    case Keys.Up:
+                        _ChangeNextUp(-1);
+                        break;
+
+                    case Keys.Down:
+                        _ChangeNextUp(1);
                         break;
 
                     case Keys.Left:
@@ -139,6 +172,14 @@ namespace Vocaluxe.Screens
             // Doing it here rather than in the sing screen also covers aborted songs.
             CSongRequests.FinishPlaying();
 
+            // Snapshot after closing, so the entry just sung is not offered again (and one that was
+            // cut short is, since FinishPlaying puts it back in line).
+            _NextUp = CSongRequests.GetAll()
+                                   .Where(e => e.State == ESongRequestState.Waiting.ToString())
+                                   .ToArray();
+            _NextUpIndex = 0;
+            _NextUpTimer.Restart();
+
             _SetVisibility();
             _UpdateRatings();
             _SlideShowBG.Visible = _UpdateBackground();
@@ -147,8 +188,47 @@ namespace Vocaluxe.Screens
                 _Statics[_StaticAvatar[p, CGame.NumPlayers - 1]].Aspect = EAspect.Crop;
         }
 
+        /// <summary>Announces who is up next and counts down; blinks once the time is up.</summary>
+        private void _UpdateNextUp()
+        {
+            bool any = _NextUpIndex < _NextUp.Length;
+            _Texts[_TextNextUpLabel].Visible = any;
+            _Texts[_TextNextUpSong].Visible = any;
+            _Texts[_TextNextUpSingers].Visible = any;
+
+            if (!any)
+            {
+                _Texts[_TextNextUpTimer].Visible = false;
+                return;
+            }
+
+            CSongRequest next = _NextUp[_NextUpIndex];
+            _Texts[_TextNextUpLabel].Text = _NextUp.Length > 1
+                ? "Als Nächstes (" + (_NextUpIndex + 1) + "/" + _NextUp.Length + ") – mit ↑↓ wechseln"
+                : "Als Nächstes";
+            _Texts[_TextNextUpSong].Text = (string.IsNullOrEmpty(next.Artist) ? "" : next.Artist + " – ") + next.Title;
+            _Texts[_TextNextUpSingers].Text = string.Join(" & ", next.SingerNames);
+
+            double elapsed = _NextUpTimer.Elapsed.TotalSeconds;
+            int remaining = (int)Math.Ceiling(_NextUpSeconds - elapsed);
+
+            if (remaining > 0)
+            {
+                _Texts[_TextNextUpTimer].Text = "Enter drücken zum Starten – " + remaining + " s";
+                _Texts[_TextNextUpTimer].Visible = true;
+            }
+            else
+            {
+                // Blink rather than act: nobody should be dragged on stage by a timer.
+                _Texts[_TextNextUpTimer].Text = "Bereit? Enter drücken zum Starten";
+                _Texts[_TextNextUpTimer].Visible = (int)(elapsed * 2) % 2 == 0;
+            }
+        }
+
         public override bool UpdateGame()
         {
+            _UpdateNextUp();
+
             var players = new SPlayer[CGame.NumPlayers];
             if (_Round >= 0)
                 players = _Points.GetPlayer(_Round, CGame.NumPlayers);
@@ -459,6 +539,34 @@ namespace Vocaluxe.Screens
             foreach (string photo in photos)
                 _SlideShowBG.AddSlideShowTexture(photo);
             return photos.Length > 0;
+        }
+
+        /// <summary>Browses the waiting entries; each one gets the full countdown again.</summary>
+        private void _ChangeNextUp(int direction)
+        {
+            if (_NextUp.Length < 2)
+                return;
+
+            _NextUpIndex = (_NextUpIndex + direction + _NextUp.Length) % _NextUp.Length;
+            _NextUpTimer.Restart();
+        }
+
+        /// <summary>
+        ///     Hands the announced entry to the game. Returns false when there is nothing to start,
+        ///     so the caller can fall back to simply leaving the screen.
+        /// </summary>
+        private bool _StartAnnounced()
+        {
+            if (_NextUpIndex >= _NextUp.Length)
+                return false;
+
+            // No rights check: whoever is at the keyboard is the host. The same call from a phone
+            // goes through CWebQueueApi, which does check.
+            if (CVocaluxeServer.StartSongRequest(_NextUp[_NextUpIndex].RequestId) != EStartRequestResult.Started)
+                return false;
+
+            _NextUpTimer.Stop();
+            return true;
         }
 
         private void _LeaveScreen()

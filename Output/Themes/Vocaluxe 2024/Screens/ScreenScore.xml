@@ -2,7 +2,7 @@
 <Screen xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Informations>
     <ScreenName>ScreenScore</ScreenName>
-    <ScreenVersion>4</ScreenVersion>
+    <ScreenVersion>5</ScreenVersion>
   </Informations>
   <Backgrounds>
     <Background Name="Background1">
@@ -1458,6 +1458,62 @@
       <SelColor Name="TextSelColor" />
       <Align>Left</Align>
       <ResizeAlign>Bottom</ResizeAlign>
+      <Style>Bold</Style>
+      <Font>Outline</Font>
+      <Text />
+    </Text>
+      <Text Name="TextNextUpLabel">
+      <X>960</X>
+      <Y>880</Y>
+      <Z>-1</Z>
+      <H>28</H>
+      <MaxW>1600</MaxW>
+      <Color Name="TextColor" />
+      <SelColor Name="TextSelColor" />
+      <Align>Center</Align>
+      <ResizeAlign>Center</ResizeAlign>
+      <Style>Bold</Style>
+      <Font>Outline</Font>
+      <Text />
+    </Text>
+    <Text Name="TextNextUpSong">
+      <X>960</X>
+      <Y>912</Y>
+      <Z>-1</Z>
+      <H>46</H>
+      <MaxW>1700</MaxW>
+      <Color Name="TextColor" />
+      <SelColor Name="TextSelColor" />
+      <Align>Center</Align>
+      <ResizeAlign>Center</ResizeAlign>
+      <Style>Bold</Style>
+      <Font>Outline</Font>
+      <Text />
+    </Text>
+    <Text Name="TextNextUpSingers">
+      <X>960</X>
+      <Y>962</Y>
+      <Z>-1</Z>
+      <H>34</H>
+      <MaxW>1700</MaxW>
+      <Color Name="TextColor" />
+      <SelColor Name="TextSelColor" />
+      <Align>Center</Align>
+      <ResizeAlign>Center</ResizeAlign>
+      <Style>Normal</Style>
+      <Font>Outline</Font>
+      <Text />
+    </Text>
+    <Text Name="TextNextUpTimer">
+      <X>960</X>
+      <Y>1004</Y>
+      <Z>-1</Z>
+      <H>30</H>
+      <MaxW>1700</MaxW>
+      <Color Name="TextColor" />
+      <SelColor Name="TextSelColor" />
+      <Align>Center</Align>
+      <ResizeAlign>Center</ResizeAlign>
       <Style>Bold</Style>
       <Font>Outline</Font>
       <Text />

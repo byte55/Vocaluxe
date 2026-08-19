@@ -58,6 +58,9 @@ namespace Vocaluxe.Base.Server
         public string State { get; set; } = ESongRequestState.Waiting.ToString();
         public string CreatedAt { get; set; }
 
+        /// <summary>When the song was handed to the game; null while it has not been started.</summary>
+        public DateTime? StartedAt { get; set; }
+
         /// <summary>Profile that created the entry — may remove it again without admin rights.</summary>
         public Guid CreatedBy { get; set; }
     }
@@ -230,13 +233,27 @@ namespace Vocaluxe.Base.Server
 
                 CSongRequest request = _Requests.FirstOrDefault(x => x.RequestId == requestId);
                 if (request != null)
+                {
                     request.State = ESongRequestState.Playing.ToString();
+                    request.StartedAt = DateTime.Now;
+                }
                 _Touch();
             }
             _Save();
         }
 
-        /// <summary>Closes the running entry — called when the score screen comes up.</summary>
+        /// <summary>
+        ///     How long a song has to have run to count as sung. Below that it was a false start --
+        ///     wrong song, nobody at the microphone -- and the entry goes back into the queue instead
+        ///     of being marked off. Above it, cutting the endless outro short with Escape is a normal
+        ///     way to end a song and must not cost the entry.
+        /// </summary>
+        public const int MinSecondsToCount = 30;
+
+        /// <summary>
+        ///     Closes the running entry: sung if it ran long enough, back in line if not.
+        ///     Called when the score screen comes up and when a song is aborted.
+        /// </summary>
         public static void FinishPlaying()
         {
             bool changed = false;
@@ -244,7 +261,19 @@ namespace Vocaluxe.Base.Server
             {
                 foreach (CSongRequest r in _Requests.Where(x => x.State == ESongRequestState.Playing.ToString()))
                 {
-                    r.State = ESongRequestState.Done.ToString();
+                    double seconds = r.StartedAt.HasValue
+                        ? (DateTime.Now - r.StartedAt.Value).TotalSeconds
+                        : double.MaxValue;
+
+                    if (seconds >= MinSecondsToCount)
+                        r.State = ESongRequestState.Done.ToString();
+                    else
+                    {
+                        r.State = ESongRequestState.Waiting.ToString();
+                        r.StartedAt = null;
+                        CLog.Information("Song request " + r.RequestId + " ran only " + (int)seconds
+                                         + "s and goes back into the queue");
+                    }
                     changed = true;
                 }
                 if (changed)
