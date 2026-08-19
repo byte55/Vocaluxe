@@ -127,13 +127,13 @@ namespace Tests.Vocaluxe
         [Test]
         public void FFmpegLibrariesAreAvailable()
         {
-            Assert.IsTrue(CFFmpegLoader.IsAvailable,
-                          "no usable ffmpeg found - the direct decoder cannot be tested on this machine");
+            CNativeTestLibs.RequireFFmpeg();
         }
 
         [Test]
         public void DecodesAWholeSongAndKeepsTheTimeline()
         {
+            CNativeTestLibs.RequireFFmpeg();
             string file = _LongSong();
             if (file == null)
                 Assert.Ignore("no song longer than " + _OverflowPoint + " s in the library");
@@ -157,6 +157,7 @@ namespace Tests.Vocaluxe
         [Test]
         public void AgreesWithTheAcinerellaDecoder()
         {
+            CNativeTestLibs.RequireFFmpeg();
             string file = _LongSong();
             if (file == null)
                 Assert.Ignore("no song longer than " + _OverflowPoint + " s in the library");
@@ -184,6 +185,7 @@ namespace Tests.Vocaluxe
         [Test]
         public void SeeksToWhereItWasAsked()
         {
+            CNativeTestLibs.RequireFFmpeg();
             string file = _LongSong();
             if (file == null)
                 Assert.Ignore("no song longer than " + _OverflowPoint + " s in the library");

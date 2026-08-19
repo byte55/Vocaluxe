@@ -20,6 +20,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using NUnit.Framework;
+using Vocaluxe.Lib.FFmpeg;
 
 namespace Tests.Vocaluxe
 {
@@ -29,6 +30,24 @@ namespace Tests.Vocaluxe
     /// </summary>
     static class CNativeTestLibs
     {
+        /// <summary>
+        ///     The ffmpeg decoders need the shared libraries in a version matching the bindings. That is
+        ///     an environment fact, not something the code can fix, so on a build machine without them
+        ///     the decoder tests skip. Locally they must not: a loader that silently stopped finding
+        ///     ffmpeg would otherwise turn every decoder test into a quiet skip and nobody would notice.
+        /// </summary>
+        public static void RequireFFmpeg()
+        {
+            if (CFFmpegLoader.IsAvailable)
+                return;
+
+            bool onBuildMachine = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI"));
+            const string message = "no ffmpeg matching the bindings on this machine";
+            if (onBuildMachine)
+                Assert.Ignore(message);
+            Assert.Fail(message + " - expected it here");
+        }
+
         private static bool _Tried;
         private static bool _Available;
 

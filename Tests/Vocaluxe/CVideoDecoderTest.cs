@@ -94,6 +94,7 @@ namespace Tests.Vocaluxe
         [Test]
         public void ProducesTheSamePixelsAsAcinerella()
         {
+            CNativeTestLibs.RequireFFmpeg();
             string file = _LongVideo();
             if (file == null)
                 Assert.Ignore("no video longer than " + _OverflowPoint + " s in the library");
@@ -148,6 +149,7 @@ namespace Tests.Vocaluxe
         [Test]
         public void KeepsTheTimelinePastTheOverflowPoint()
         {
+            CNativeTestLibs.RequireFFmpeg();
             string file = _LongVideo();
             if (file == null)
                 Assert.Ignore("no video longer than " + _OverflowPoint + " s in the library");
@@ -189,6 +191,7 @@ namespace Tests.Vocaluxe
         [Test]
         public void SeeksToWhereItWasAsked()
         {
+            CNativeTestLibs.RequireFFmpeg();
             string file = _LongVideo();
             if (file == null)
                 Assert.Ignore("no video longer than " + _OverflowPoint + " s in the library");
@@ -220,6 +223,7 @@ namespace Tests.Vocaluxe
         [Test]
         public void SkippingFramesAdvancesTheTimeline()
         {
+            CNativeTestLibs.RequireFFmpeg();
             string file = _LongVideo();
             if (file == null)
                 Assert.Ignore("no video longer than " + _OverflowPoint + " s in the library");
