@@ -31,6 +31,20 @@ etwas sagen und sich unterscheiden, ist eines falsch.
 **Fehlendes.** Wurde etwas gebaut, das ein späterer Leser kennen muss, das aber
 nirgends steht? Besonders Stolperfallen und Betriebswissen.
 
+## Frag die Quelle, nicht den Zwischenspeicher
+
+Für Aussagen über etwas, das außerhalb des Arbeitsverzeichnisses liegt, reicht
+der lokale Stand nicht. Git ist das häufigste Beispiel: `git branch -r` zeigt
+nur, was dieser Klon zuletzt geholt hat — bei einem Single-Branch-Klon (schau in
+`git config --get-all remote.origin.fetch`) fehlen dort Branches dauerhaft, auch
+wenn sie längst auf dem Server liegen. Was der Server wirklich kennt, sagt
+`git ls-remote --heads origin`. Genau daran ist hier schon eine Falschmeldung
+entstanden („Branch nicht gepusht", obwohl er es war).
+
+Dasselbe gilt sinngemäß für Laufzeitzustände: Ob ein Dienst läuft, beantwortet
+eine Anfrage an ihn, nicht eine Konfigurationsdatei, die sagt, dass er laufen
+sollte.
+
 ## Was du ändern darfst — und was nicht
 
 Korrigiere selbst, was **eindeutig faktisch falsch** ist: tote Dateiverweise,
