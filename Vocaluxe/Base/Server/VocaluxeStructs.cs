@@ -192,4 +192,35 @@ namespace Vocaluxe.Base.Server
         [DataMember]
         public string LastChanged;
     }
+
+    #region web queue API (System.Text.Json, no DataContract needed)
+
+    /// <summary>One entry of the paged song list used by the new web UI.</summary>
+    public class SSongListEntry
+    {
+        public int SongId { get; set; }
+        public string Title { get; set; }
+        public string Artist { get; set; }
+        public bool IsDuet { get; set; }
+        public string Year { get; set; }
+        public string Genre { get; set; }
+        public string Language { get; set; }
+    }
+
+    public class SSongSearchResult
+    {
+        public int Total { get; set; }
+        public SSongListEntry[] Items { get; set; }
+    }
+
+    /// <summary>Profile as shown in the "tap your name" list.</summary>
+    public class SProfileListEntry
+    {
+        public string ProfileId { get; set; }
+        public string PlayerName { get; set; }
+        public bool IsGuest { get; set; }
+        public bool NeedsPassword { get; set; }
+    }
+
+    #endregion
 }

@@ -89,6 +89,9 @@
     <Content Include="Website\css\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Website\img\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Website\js\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- New event frontend (song requests / queue). Served as the site root; the old jQuery Mobile
+         page stays reachable under /legacy. -->
+    <Content Include="Website\app\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Stamp the assembly version from `git describe` at build time. Replaces the old MSBuild build events

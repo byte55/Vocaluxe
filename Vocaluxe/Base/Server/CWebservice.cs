@@ -44,6 +44,15 @@ namespace Vocaluxe.Base.Server
                 {
                     await next();
                 }
+                catch (TimeoutException)
+                {
+                    // The game loop did not pick the task up in time (a stalled render loop does
+                    // this). Report it as "temporarily unavailable" instead of hanging the client,
+                    // and keep it out of the error log -- it is a state, not a bug.
+                    CLog.Information("Webserver: main thread timeout on " + ctx.Request.Method + " " + ctx.Request.Path);
+                    if (!ctx.Response.HasStarted)
+                        ctx.Response.StatusCode = 503;
+                }
                 catch (Exception e)
                 {
                     CLog.Error(e, "Webserver request failed: " + ctx.Request.Method + " " + ctx.Request.Path);
@@ -128,7 +137,9 @@ namespace Vocaluxe.Base.Server
                 return _Empty();
             });
 
-            app.MapGet("/", (HttpContext ctx) => _File(ctx, "index.html", "text/html"));
+            // The new frontend owns "/" (served by UseStaticFiles). The original jQuery Mobile page
+            // stays available for comparison and as a fallback.
+            app.MapGet("/legacy", (HttpContext ctx) => _File(ctx, "index.html", "text/html"));
             app.MapGet("/js/{filename}", (HttpContext ctx, string filename) => _File(ctx, "js/" + filename, "text/javascript"));
             app.MapGet("/css/{filename}", (HttpContext ctx, string filename) => _File(ctx, "css/" + filename, "text/css"));
             app.MapGet("/css/images/{filename}", (HttpContext ctx, string filename) => _File(ctx, "css/images/" + filename, "image/png"));

@@ -26,7 +26,13 @@ namespace Vocaluxe.Base.Server
     {
         private static readonly Dictionary<Guid, CSession> _ActiveSessions;
         private const int _UserTimeoutCheckIntervall = 120000;
-        private const int _UserTimeout = 120000;
+
+        /// <summary>
+        ///     Idle time before a session is dropped. Two minutes (the old value) is far too short
+        ///     for the intended use: a guest picks a profile, puts the phone in a pocket, and is
+        ///     logged out before the song they signed up for even starts.
+        /// </summary>
+        private const int _UserTimeout = 4 * 60 * 60 * 1000;
 
         static CSessionControl()
         {
@@ -60,6 +66,23 @@ namespace Vocaluxe.Base.Server
             //InvalidateSessions(id);
             _ActiveSessions.Add(newId, session);
 
+            return newId;
+        }
+
+        /// <summary>
+        ///     Opens a session for a profile without asking for credentials. Only allowed for
+        ///     profiles that have no password set — the whole point of the event flow is that a
+        ///     guest taps their name and is done, but a profile that bothered to set a password
+        ///     must not be bypassed by it.
+        /// </summary>
+        public static Guid OpenSessionForProfile(Guid profileId)
+        {
+            if (profileId == Guid.Empty || !CVocaluxeServer.ValidatePassword(profileId, ""))
+                return Guid.Empty;
+
+            Guid newId = Guid.NewGuid();
+            CSession session = new CSession(newId, profileId, _GetUserRoles(profileId));
+            _ActiveSessions.Add(newId, session);
             return newId;
         }
 

@@ -135,6 +135,10 @@ namespace Vocaluxe.Screens
 
             _SavePlayedSongs();
 
+            // The song is over: close the web queue entry it came from, so the next act moves up.
+            // Doing it here rather than in the sing screen also covers aborted songs.
+            CSongRequests.FinishPlaying();
+
             _SetVisibility();
             _UpdateRatings();
             _SlideShowBG.Visible = _UpdateBackground();

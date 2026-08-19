@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#12101a">
+    <title>Karaoke</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%238b46ff'/%3E%3Cpath d='M16 7a3.2 3.2 0 0 1 3.2 3.2v5.6a3.2 3.2 0 0 1-6.4 0v-5.6A3.2 3.2 0 0 1 16 7z' fill='%23fff'/%3E%3Cpath d='M10.4 15.2a5.6 5.6 0 0 0 11.2 0' stroke='%23fff' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 20.8V25' stroke='%23fff' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- ================= Anmeldung ================= -->
+<section id="view-login" class="view is-active">
+    <div class="login-wrap">
+        <h1 class="brand">Karaoke</h1>
+        <p class="brand-sub">Wer bist du?</p>
+
+        <div id="profileList" class="profile-grid">
+            <div class="loading">Profile werden geladen…</div>
+        </div>
+
+        <div class="new-profile">
+            <input id="newProfileName" type="text" maxlength="30" placeholder="Neuer Name" autocomplete="off">
+            <button id="newProfileBtn" class="btn btn-primary">Anlegen</button>
+        </div>
+    </div>
+</section>
+
+<!-- ================= App ================= -->
+<div id="app" class="app" hidden>
+    <header class="topbar">
+        <div class="topbar-title">Karaoke</div>
+        <button id="whoBtn" class="who" title="Profil wechseln"><span id="whoName">–</span></button>
+    </header>
+
+    <main class="content">
+        <!-- Warteliste -->
+        <section id="view-queue" class="view is-active">
+            <div id="nowPlaying" class="now" hidden>
+                <div class="now-label">Läuft gerade</div>
+                <div class="now-song" id="nowSong"></div>
+                <div class="now-singers" id="nowSingers"></div>
+            </div>
+
+            <div id="upNext" class="next" hidden>
+                <div class="next-label">Als Nächstes</div>
+                <div class="next-song" id="nextSong"></div>
+                <div class="next-singers" id="nextSingers"></div>
+                <button id="startNextBtn" class="btn btn-primary btn-block">Wir sind bereit – jetzt starten</button>
+            </div>
+
+            <h2 class="section-title">Warteliste</h2>
+            <ul id="queueList" class="queue"></ul>
+            <div id="queueEmpty" class="empty" hidden>
+                <p>Noch niemand in der Warteliste.</p>
+                <button class="btn btn-primary" data-goto="songs">Song aussuchen</button>
+            </div>
+
+            <div class="admin-only admin-tools" hidden>
+                <button id="clearFinishedBtn" class="btn btn-ghost">Erledigte entfernen</button>
+            </div>
+        </section>
+
+        <!-- Songsuche -->
+        <section id="view-songs" class="view">
+            <div class="search-bar">
+                <input id="searchInput" type="search" placeholder="Song oder Interpret suchen…" autocomplete="off">
+            </div>
+            <div id="songCount" class="song-count"></div>
+            <ul id="songList" class="songs"></ul>
+            <button id="moreBtn" class="btn btn-ghost btn-block" hidden>Mehr laden</button>
+        </section>
+    </main>
+
+    <nav class="tabbar">
+        <button class="tab is-active" data-view="queue">
+            <span class="tab-label">Warteliste</span>
+            <span id="queueBadge" class="badge" hidden>0</span>
+        </button>
+        <button class="tab" data-view="songs">
+            <span class="tab-label">Songs</span>
+        </button>
+    </nav>
+</div>
+
+<!-- ================= Song-Dialog ================= -->
+<div id="songSheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-close-sheet></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+        <div class="sheet-handle"></div>
+        <div id="sheetTitle" class="sheet-title"></div>
+        <div id="sheetArtist" class="sheet-artist"></div>
+        <div id="sheetMeta" class="sheet-meta"></div>
+
+        <div id="duetBox" class="duet" hidden>
+            <label class="duet-label" for="partnerSelect">Duett – mit wem singst du?</label>
+            <select id="partnerSelect">
+                <option value="">Alleine singen</option>
+            </select>
+            <p class="mic-hint">
+                Du singst in <strong>Mikro 1</strong>, dein Partner in <strong>Mikro 2</strong>.
+            </p>
+        </div>
+
+        <div class="sheet-actions">
+            <button class="btn btn-ghost" data-close-sheet>Abbrechen</button>
+            <button id="signUpBtn" class="btn btn-primary">Eintragen</button>
+        </div>
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

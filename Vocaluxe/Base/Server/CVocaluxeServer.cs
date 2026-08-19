@@ -26,6 +26,8 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Vocaluxe.Lib.Input;
@@ -86,6 +88,20 @@ namespace Vocaluxe.Base.Server
                 if (CConfig.Config.Server.ServerEncryption == EOffOn.TR_CONFIG_ON)
                     CLog.Information("Webserver: HTTPS is not yet supported on the cross-platform build; falling back to HTTP.");
 
+                // Every endpoint marshals its work onto the main thread via DoTask, and that queue is
+                // drained exactly once per rendered frame (CDrawBase.MainLoop -> ProcessServerTasks).
+                // With VSync on, SwapBuffers waits for a compositor frame callback -- and a minimized
+                // window never gets one on Wayland, so the render loop parks forever and the server
+                // stops answering *every* client until the window is restored. GLFW cannot help here:
+                // xdg-shell never tells the client it was minimized, so WindowState stays Fullscreen.
+                // Measured on this machine; see docs/web-queue.md for the full trace.
+                if (CConfig.Config.Graphics.VSync == EOffOn.TR_CONFIG_ON)
+                {
+                    CLog.Information("Webserver: VSync is enabled. If the game window is minimized, the render loop "
+                                     + "can block and the webserver will stop responding until it is restored. "
+                                     + "Turn VSync off (Options -> Graphics) when the server is used during an event.");
+                }
+
                 WebApplicationBuilder builder = WebApplication.CreateBuilder();
                 builder.Logging.ClearProviders();
                 builder.WebHost.UseUrls("http://0.0.0.0:" + port + "/");
@@ -95,7 +111,23 @@ namespace Vocaluxe.Base.Server
                 // 500 ("Synchronous operations are disallowed").
                 builder.WebHost.ConfigureKestrel(options => options.AllowSynchronousIO = true);
                 _App = builder.Build();
+
+                // Serve the new frontend straight from Kestrel. The old per-directory handlers in
+                // CWebservice route every file through DoTask and therefore through the render loop,
+                // which is both pointless for static bytes and fragile when the loop stalls.
+                string webRoot = Path.Combine(CSettings.ProgramFolder, "Website", "app");
+                if (Directory.Exists(webRoot))
+                {
+                    var fileProvider = new PhysicalFileProvider(webRoot);
+                    _App.UseDefaultFiles(new DefaultFilesOptions {FileProvider = fileProvider, RequestPath = ""});
+                    _App.UseStaticFiles(new StaticFileOptions {FileProvider = fileProvider, RequestPath = ""});
+                }
+                else
+                    CLog.Error("Web frontend not found at " + webRoot + "; only the legacy page will be available");
+
                 CWebservice.MapEndpoints(_App);
+                CWebQueueApi.MapEndpoints(_App);
+                CSongRequests.Load();
 
                 _Address = "http://" + Dns.GetHostName() + ":" + port + "/";
                 Start();
@@ -195,80 +227,91 @@ namespace Vocaluxe.Base.Server
         }
 
 
+        /// <summary>
+        ///     How long a request waits for the main thread before giving up.
+        ///
+        ///     This used to be an unbounded Wait(), which turned any stall of the render loop into a
+        ///     dead webserver: the queue below is only drained once per rendered frame, so a stalled
+        ///     loop meant every request blocked forever, each one holding a thread pool thread until
+        ///     the pool was empty and even endpoints that never touch the main thread stopped
+        ///     answering. Failing after a few seconds keeps the damage local to the request.
+        /// </summary>
+        private const int _MainThreadTimeoutMs = 5000;
+
+        private static TReturnType _RunOnMainThread<TReturnType>(Task<TReturnType> task)
+        {
+            _ServerTaskQueue.Enqueue(task);
+            if (!task.Wait(_MainThreadTimeoutMs))
+                throw new TimeoutException("The game loop did not pick up the request within " + _MainThreadTimeoutMs + " ms");
+            return task.Result;
+        }
+
+        private static void _RunOnMainThread(Task task)
+        {
+            _ServerTaskQueue.Enqueue(task);
+            if (!task.Wait(_MainThreadTimeoutMs))
+                throw new TimeoutException("The game loop did not pick up the request within " + _MainThreadTimeoutMs + " ms");
+        }
+
         public static TReturnType DoTask<TReturnType>(Func<TReturnType> action)
         {
             var task = new Task<TReturnType>(action);
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
-            return task.Result;
+            return _RunOnMainThread(task);
         }
 
         public static TReturnType DoTask<TReturnType, TParameterType>(Func<TParameterType, TReturnType> action, TParameterType parameter)
         {
             var task = new Task<TReturnType>(() => action(parameter));
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
-            return task.Result;
+            return _RunOnMainThread(task);
         }
 
         public static TReturnType DoTask<TReturnType, TParameterType1, TParameterType2>(Func<TParameterType1, TParameterType2, TReturnType> action, TParameterType1 parameter1, TParameterType2 parameter2)
         {
             var task = new Task<TReturnType>(() => action(parameter1, parameter2));
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
-            return task.Result;
+            return _RunOnMainThread(task);
         }
 
         public static TReturnType DoTask<TReturnType, TParameterType1, TParameterType2, TParameterType3>(Func<TParameterType1, TParameterType2, TParameterType3, TReturnType> action, TParameterType1 parameter1, TParameterType2 parameter2, TParameterType3 parameter3)
         {
             var task = new Task<TReturnType>(() => action(parameter1, parameter2, parameter3));
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
-            return task.Result;
+            return _RunOnMainThread(task);
         }
 
         public static TReturnType DoTask<TReturnType, TParameterType1, TParameterType2, TParameterType3, TParameterType4>(Func<TParameterType1, TParameterType2, TParameterType3, TParameterType4, TReturnType> action, TParameterType1 parameter1, TParameterType2 parameter2, TParameterType3 parameter3, TParameterType4 parameter4)
         {
             var task = new Task<TReturnType>(() => action(parameter1, parameter2, parameter3, parameter4));
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
-            return task.Result;
+            return _RunOnMainThread(task);
         }
 
         
         public static void DoTaskWithoutReturn(Action action)
         {
             var task = new Task(action);
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
+            _RunOnMainThread(task);
         }
 
         public static void DoTaskWithoutReturn<TParameterType>(Action<TParameterType> action, TParameterType parameter)
         {
             var task = new Task(() => action(parameter));
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
+            _RunOnMainThread(task);
         }
 
         public static void DoTaskWithoutReturn<TParameterType1, TParameterType2>(Action<TParameterType1, TParameterType2> action, TParameterType1 parameter1, TParameterType2 parameter2)
         {
             var task = new Task(() => action(parameter1, parameter2));
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
+            _RunOnMainThread(task);
         }
 
         public static void DoTaskWithoutReturn<TParameterType1, TParameterType2, TParameterType3>(Action<TParameterType1, TParameterType2, TParameterType3> action, TParameterType1 parameter1, TParameterType2 parameter2, TParameterType3 parameter3)
         {
             var task = new Task(() => action(parameter1, parameter2, parameter3));
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
+            _RunOnMainThread(task);
         }
 
         public static void DoTaskWithoutReturn<TParameterType1, TParameterType2, TParameterType3, TParameterType4>(Action<TParameterType1, TParameterType2, TParameterType3, TParameterType4> action, TParameterType1 parameter1, TParameterType2 parameter2, TParameterType3 parameter3, TParameterType4 parameter4)
         {
             var task = new Task(() => action(parameter1, parameter2, parameter3, parameter4));
-            _ServerTaskQueue.Enqueue(task);
-            task.Wait(); //wait until the task is completed
+            _RunOnMainThread(task);
         }
 
         #endregion
@@ -664,6 +707,145 @@ namespace Vocaluxe.Base.Server
             }
             return result;
         }
+        #endregion
+
+        #region song requests (web queue)
+
+        /// <summary>
+        ///     Hands a queue entry to the game: loads the song, seats the singers and jumps into the
+        ///     sing screen. <b>Main thread only</b> — call it through DoTask.
+        /// </summary>
+        public static bool StartSongRequest(int requestId)
+        {
+            CSongRequest request = CSongRequests.GetById(requestId);
+            if (request == null)
+                return false;
+
+            CSong song = CSongs.GetSong(request.SongId);
+            if (song == null)
+            {
+                CLog.Error("Song request " + requestId + " refers to unknown song id " + request.SongId);
+                return false;
+            }
+
+            // A duet only works if we actually have one singer per voice; otherwise sing it normally.
+            bool asDuet = song.IsDuet && request.SingerProfileIds.Count >= 2;
+            EGameMode mode = asDuet ? EGameMode.TR_GAMEMODE_DUET : EGameMode.TR_GAMEMODE_NORMAL;
+
+            CGame.Reset();
+            CGame.ClearSongs();
+            if (!CGame.AddSongById(request.SongId, mode))
+            {
+                CLog.Error("Song " + request.SongId + " does not support game mode " + mode);
+                return false;
+            }
+
+            int numPlayers = request.SingerProfileIds.Count;
+            if (numPlayers < 1)
+                numPlayers = 1;
+            if (numPlayers > CSettings.MaxNumPlayer)
+                numPlayers = CSettings.MaxNumPlayer;
+
+            CGame.NumPlayers = numPlayers;
+            CConfig.Config.Game.NumPlayers = numPlayers;
+            CGame.ResetPlayer();
+
+            for (int i = 0; i < numPlayers; i++)
+            {
+                Guid profileId = i < request.SingerProfileIds.Count ? request.SingerProfileIds[i] : Guid.Empty;
+                CGame.Players[i].ProfileID = CProfiles.IsProfileIDValid(profileId) ? profileId : Guid.Empty;
+                // Alternate the voices so singer 1 gets voice 1, singer 2 gets voice 2.
+                CGame.Players[i].VoiceNr = asDuet ? i % song.Notes.VoiceCount : 0;
+            }
+
+            CSongRequests.MarkPlaying(requestId);
+            CGraphics.FadeTo(EScreen.Sing);
+            CLog.Information("Started song request " + requestId + " (" + request.Artist + " - " + request.Title + ") for " + numPlayers + " player(s)");
+            return true;
+        }
+
+        /// <summary>Song info for a request, resolved on the main thread.</summary>
+        public static SSongInfo GetSongInfoForRequest(int songId)
+        {
+            return _GetSongInfo(CSongs.GetSong(songId), false);
+        }
+
+        /// <summary>
+        ///     Paged, filtered song list for the web UI. Replaces shipping the entire library on
+        ///     every page load.
+        /// </summary>
+        public static SSongSearchResult SearchSongs(string query, int offset, int limit)
+        {
+            IEnumerable<CSong> songs = CSongs.AllSongs;
+
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                string q = query.Trim();
+                songs = songs.Where(song =>
+                                        (song.Title != null && song.Title.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
+                                        || (song.Artist != null && song.Artist.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0));
+            }
+
+            List<CSong> matches = songs.OrderBy(song => song.Artist, StringComparer.OrdinalIgnoreCase)
+                                       .ThenBy(song => song.Title, StringComparer.OrdinalIgnoreCase)
+                                       .ToList();
+
+            if (offset < 0)
+                offset = 0;
+            if (limit <= 0 || limit > 200)
+                limit = 50;
+
+            return new SSongSearchResult
+                {
+                    Total = matches.Count,
+                    Items = matches.Skip(offset).Take(limit).Select(song => new SSongListEntry
+                        {
+                            SongId = song.ID,
+                            Title = song.Title,
+                            Artist = song.Artist,
+                            IsDuet = song.IsDuet,
+                            Year = song.Year,
+                            Genre = song.Genres.FirstOrDefault(),
+                            Language = song.Languages.FirstOrDefault()
+                        }).ToArray()
+                };
+        }
+
+        /// <summary>Creates a passwordless guest profile so a visitor can sign up without setup.</summary>
+        public static Guid CreateGuestProfile(string playerName)
+        {
+            if (string.IsNullOrWhiteSpace(playerName))
+                return Guid.Empty;
+
+            var profile = new CProfile
+                {
+                    Active = EOffOn.TR_CONFIG_ON,
+                    // Guest, not Normal: these are throwaway profiles created from a phone at a party.
+                    // Marking them keeps them distinguishable from the host's real profiles later.
+                    UserRole = EUserRole.TR_USERROLE_GUEST,
+                    PlayerName = playerName.Trim(),
+                    Difficulty = EGameDifficulty.TR_CONFIG_NORMAL
+                };
+
+            CAvatar avatar = CProfiles.GetAvatars().FirstOrDefault();
+            if (avatar != null)
+                profile.Avatar = avatar;
+
+            CProfiles.AddProfile(profile);
+            CProfiles.Update();
+            CProfiles.SaveProfiles();
+
+            // AddProfile goes through a queue and assigns the ID on Update(), so look it up by name.
+            CProfile created = CProfiles.GetProfiles()
+                                        .LastOrDefault(p => p.PlayerName == profile.PlayerName);
+            return created == null ? Guid.Empty : created.ID;
+        }
+
+        public static bool IsSongLibraryReady()
+        {
+            return CSongs.AllSongs.Count > 0;
+        }
+
         #endregion
 
         #region playlist
