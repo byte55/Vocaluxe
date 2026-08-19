@@ -127,22 +127,102 @@ hier nicht.
 ### Abgebrochener Prozess blockiert den nächsten Start
 
 Die Single-Instance-Sperre ist ein benannter Mutex, den .NET unter Linux als
-Datei in `/tmp/.dotnet/shm/session*/Vocaluxe-SingleInstanceMutex` ablegt. Wird
-der Prozess **hart beendet** (SIGTERM/SIGKILL, etwa durch `timeout` in einem
-Testskript), bleibt der Mutex als *abandoned* zurück. Der nächste Start stirbt
-dann daran, **bevor das Logging initialisiert ist**: Exit-Code 0 nach ~0,1 s,
-kein Log-Eintrag, und nicht einmal die vorgesehene Meldung „Another Instance of
-Vocaluxe is already runnning!", weil der reguläre Zweig gar nicht erreicht wird.
+Datei unter `/tmp/.dotnet/shm/` ablegt. Wird der Prozess **hart beendet**
+(SIGTERM/SIGKILL, etwa durch `timeout` in einem Testskript), bleibt er als
+*abandoned* zurück. Der nächste Start stirbt dann daran, **bevor das Logging
+initialisiert ist**: Exit-Code 0 nach ~0,1 s, kein Log-Eintrag, und nicht einmal
+die vorgesehene Meldung „Another Instance of Vocaluxe is already runnning!",
+weil der reguläre Zweig gar nicht erreicht wird.
+
+**Der genaue Pfad ist nicht stabil.** Beobachtet wurde
+`/tmp/.dotnet/shm/global/<Hash>.server` — weder ein `session*`-Verzeichnis noch
+ein lesbarer Name. Ein auf `session*` gemünztes Aufräumkommando greift also ins
+Leere und die Sperre bleibt liegen; deshalb immer das ganze `shm`-Verzeichnis
+entfernen.
 
 Beim normalen Schließen des Fensters passiert das nicht. Falls es doch klemmt:
 
 ```bash
-rm -rf /tmp/.dotnet/shm/session*
+rm -rf /tmp/.dotnet/shm
 ```
 
 Wer Vocaluxe automatisiert testet, sollte das einkalkulieren — zwei
 aufeinanderfolgende `timeout`-Läufe sehen sonst wie ein sporadischer Absturz
 aus.
+
+## Web-Warteliste (Songwünsche per Handy)
+
+Gäste öffnen `http://<rechner>:3000/`, tippen ihr Profil an, suchen einen Song
+und tragen sich in die Warteliste ein. Wer dran ist, drückt selbst „jetzt
+starten" — Vocaluxe springt direkt in den Song, mit den richtigen Leuten auf den
+richtigen Mikrofonen.
+
+Voraussetzung ist ein aktiver Server: `<ServerActive>TR_CONFIG_ON</ServerActive>`
+in der `Config.xml` (bzw. Optionen → Server), danach Vocaluxe neu starten.
+
+Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
+[`docs/web-queue.md`](docs/web-queue.md).
+
+### Wichtige Details
+
+- **Spieler 1 ist MIC 1.** Die Reihenfolge der Sänger in einem Eintrag ist die
+  Spielernummer: wer sich einträgt, singt in Mikro 1 (am Mixer hart links), der
+  ausgewählte Duettpartner in Mikro 2 (hart rechts). Passt zum Panorama-Aufbau
+  im Audio-Abschnitt weiter unten.
+- **Die Warteliste liegt in `~/.config/Vocaluxe/SongRequests.json`** und
+  übersteht einen Neustart. Wegwerfen, wenn ein Abend zu Ende ist — Vocaluxe
+  legt sie beim nächsten Eintrag neu an.
+- **Gäste dürfen sich selbst anlegen.** Neue Profile landen als
+  `TR_USERROLE_GUEST` in `~/.config/Vocaluxe/Profiles/` und sammeln sich dort
+  über mehrere Events an; gelegentlich aufräumen.
+- **Die alte jQuery-Mobile-Oberfläche** liegt weiterhin unter `/legacy`.
+
+### Admin werden
+
+Umsortieren, Überspringen und das Löschen fremder Einträge brauchen
+Adminrechte. Die kann man sich über die Weboberfläche **nicht** selbst geben
+(`setUserRole` verlangt genau das Recht, das einem fehlt). Von Hand:
+
+```bash
+# Vocaluxe beenden, dann in ~/.config/Vocaluxe/Profiles/<Name>.xml:
+#   <UserRole>TR_USERROLE_ADMIN</UserRole>
+```
+
+Die mitgelieferten Profile (Advanced, Beginner, Expert) liegen im
+Programmordner unter `dist/Vocaluxe/Profiles/`, selbst angelegte in
+`~/.config/Vocaluxe/Profiles/`.
+
+### Falle: der erste Start nach einem Build scheitert oft
+
+Mehrfach beobachtet: direkt nach `./.build/build-linux.sh` beendet sich der
+erste Start sofort mit Exit-Code 0 — kein Fenster, keine Ausgabe, **kein**
+Log-Eintrag, und anders als bei der Mutex-Falle liegt auch nichts in
+`/tmp/.dotnet/shm`. Der zweite Start läuft dann normal. Ursache ungeklärt; wer
+automatisiert testet, sollte einen Startversuch einkalkulieren statt daraus auf
+einen kaputten Build zu schließen.
+
+### Falle: VSync + minimiertes Fenster killt den Webserver
+
+Jeder Endpunkt des Webservers schiebt seine Arbeit per `CVocaluxeServer.DoTask`
+auf den Hauptthread, und diese Queue wird **genau einmal pro gerendertem Frame**
+geleert (`CDrawBase.MainLoop` -> `ProcessServerTasks`). Steht der Renderloop,
+steht der Server — ohne Timeout, für alle Clients gleichzeitig.
+
+Genau das passiert mit **VSync an, sobald das Fenster minimiert wird**:
+`SwapBuffers` wartet auf einen Frame-Callback des Compositors, den ein
+minimiertes Fenster unter Wayland nie bekommt. Der Hauptthread parkt in `poll`
+bei 0 % CPU, das Spiel wirkt „am Leben" (Audio-Threads laufen weiter), aber
+kein einziger HTTP-Request wird mehr beantwortet — auch `curl` nicht.
+
+**Abhilfe: VSync aus** (`<VSync>TR_CONFIG_OFF</VSync>` bzw. Optionen ->
+Grafik). Gemessen: mit VSync aus 50 von 50 Requests HTTP 200 bei minimiertem
+Fenster, Renderloop durchgehend aktiv. Unter Wayland kostet das praktisch
+nichts, weil der Compositor ohnehin ganze Buffer zeigt; die Frame-Bremse im
+MainLoop greift dann über `CConfig.CalcCycleTime()`.
+
+Ein Abfangen über `WindowState == Minimized` funktioniert **nicht**: xdg-shell
+meldet dem Client den minimierten Zustand gar nicht, GLFW liefert weiterhin
+`Fullscreen`. Verifiziert durch Logging.
 
 ## Audio-Eingang (Mikrofone)
 
