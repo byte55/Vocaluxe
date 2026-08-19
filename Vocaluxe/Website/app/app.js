@@ -7,6 +7,9 @@
 (function () {
     'use strict';
 
+    // Below this many entries a search box is just noise — you see every name at a glance.
+    var SEARCH_THRESHOLD = 6;
+
     var SESSION_KEY = 'karaoke.session';
     var PROFILE_KEY = 'karaoke.profile';
     var PAGE_SIZE = 40;
@@ -21,6 +24,9 @@
         songTotal: 0,
         songQuery: '',
         selectedSong: null,
+        selectedPartner: '',
+        profileQuery: '',
+        partnerQuery: '',
         difficulty: 1,
         entries: []
     };
@@ -34,8 +40,8 @@
          'nowPlaying', 'nowSong', 'nowSingers', 'upNext', 'nextSong', 'nextSingers', 'startNextBtn',
          'queueList', 'queueEmpty', 'queueBadge', 'clearFinishedBtn', 'searchInput', 'songCount',
          'songList', 'moreBtn', 'songSheet', 'sheetTitle', 'sheetArtist', 'sheetMeta', 'partnerBox',
-         'partnerLabel', 'micHint', 'partnerSelect', 'signUpBtn', 'toast', 'meName',
-         'difficultyPicker', 'switchProfileBtn'].forEach(function (id) {
+         'partnerLabel', 'micHint', 'partnerSearch', 'partnerList', 'signUpBtn', 'toast', 'meName',
+         'difficultyPicker', 'switchProfileBtn', 'profileSearch'].forEach(function (id) {
             el[id.replace(/-([a-z])/g, function (m, c) { return c.toUpperCase(); })] = $(id);
         });
     }
@@ -98,12 +104,26 @@
         });
     }
 
+    function matches(name, query) {
+        return !query || String(name || '').toLowerCase().indexOf(query.toLowerCase()) >= 0;
+    }
+
     function renderProfiles() {
         if (!state.profiles.length) {
             el.profileList.innerHTML = '<div class="loading">Noch keine Profile — leg unten eins an.</div>';
+            el.profileSearch.hidden = true;
             return;
         }
-        el.profileList.innerHTML = state.profiles.map(function (p) {
+
+        el.profileSearch.hidden = state.profiles.length < SEARCH_THRESHOLD;
+
+        var shown = state.profiles.filter(function (p) { return matches(p.playerName, state.profileQuery); });
+        if (!shown.length) {
+            el.profileList.innerHTML = '<div class="loading">Kein Profil mit diesem Namen.</div>';
+            return;
+        }
+
+        el.profileList.innerHTML = shown.map(function (p) {
             return '<button class="profile-btn" data-id="' + escapeHtml(p.profileId) + '">'
                 + escapeHtml(p.playerName)
                 + (p.needsPassword ? '<span class="locked">mit Passwort</span>' : '')
@@ -156,6 +176,8 @@
         clearSession();
         el.app.hidden = true;
         $('view-login').classList.add('is-active');
+        state.profileQuery = '';
+        el.profileSearch.value = '';
         loadProfiles();
     }
 
@@ -331,14 +353,41 @@
         el.partnerLabel.textContent = song.isDuet
             ? 'Duett – wer singt die zweite Stimme?'
             : 'Zusammen singen mit';
-        el.partnerSelect.innerHTML = '<option value="">Alleine singen</option>'
-            + state.profiles
-                .filter(function (p) { return p.profileId !== state.profileId; })
-                .map(function (p) {
-                    return '<option value="' + escapeHtml(p.profileId) + '">' + escapeHtml(p.playerName) + '</option>';
-                }).join('');
+
+        state.selectedPartner = '';
+        state.partnerQuery = '';
+        el.partnerSearch.value = '';
+        renderPartnerList();
 
         el.songSheet.hidden = false;
+    }
+
+    function partnerCandidates() {
+        return state.profiles.filter(function (p) { return p.profileId !== state.profileId; });
+    }
+
+    function renderPartnerList() {
+        var candidates = partnerCandidates();
+        el.partnerSearch.hidden = candidates.length < SEARCH_THRESHOLD;
+
+        var shown = candidates.filter(function (p) { return matches(p.playerName, state.partnerQuery); });
+
+        // "Alone" stays pinned at the top and is never filtered away — it is the default, and
+        // searching for a partner you then decide against should not hide the way back.
+        var html = '<li><button class="picker-item' + (state.selectedPartner ? '' : ' is-selected')
+            + '" data-partner="">Alleine singen</button></li>';
+
+        html += shown.map(function (p) {
+            return '<li><button class="picker-item'
+                + (state.selectedPartner === p.profileId ? ' is-selected' : '')
+                + '" data-partner="' + escapeHtml(p.profileId) + '">'
+                + escapeHtml(p.playerName) + '</button></li>';
+        }).join('');
+
+        if (!shown.length && state.partnerQuery)
+            html += '<li class="picker-empty">Kein Profil mit diesem Namen.</li>';
+
+        el.partnerList.innerHTML = html;
     }
 
     function closeSheet() {
@@ -351,7 +400,7 @@
 
         // Index 0 is player 1 / MIC 1 — the person signing up always takes the first microphone.
         var singers = [state.profileId];
-        var partner = el.partnerSelect.value;
+        var partner = state.selectedPartner;
         if (partner) singers.push(partner);
 
         el.signUpBtn.disabled = true;
@@ -462,6 +511,23 @@
 
             var start = e.target.closest('[data-start]');
             if (start) startRequest(start.dataset.start);
+        });
+
+        el.profileSearch.addEventListener('input', function () {
+            state.profileQuery = el.profileSearch.value;
+            renderProfiles();
+        });
+
+        el.partnerSearch.addEventListener('input', function () {
+            state.partnerQuery = el.partnerSearch.value;
+            renderPartnerList();
+        });
+
+        el.partnerList.addEventListener('click', function (e) {
+            var item = e.target.closest('[data-partner]');
+            if (!item) return;
+            state.selectedPartner = item.dataset.partner;
+            renderPartnerList();
         });
 
         el.signUpBtn.addEventListener('click', signUp);

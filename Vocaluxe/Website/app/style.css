@@ -504,6 +504,9 @@ select:focus {
     width: 100%;
     max-width: 560px;
     padding: 10px 20px calc(24px + var(--safe-bottom));
+    /* With a long guest list the picker could otherwise push "Eintragen" off a short screen. */
+    max-height: 92vh;
+    overflow-y: auto;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     background: var(--bg-raised);
     border: 1px solid var(--line);
@@ -541,6 +544,57 @@ select:focus {
 }
 
 .mic-hint { margin: 10px 0 0; font-size: .85rem; color: var(--text-dim); }
+
+/* ---------------- Suchbare Auswahl ---------------- */
+
+.picker-search {
+    width: 100%;
+    min-height: var(--tap);
+    margin-bottom: 8px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-raised-2);
+}
+
+.picker-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px;
+    /* Long guest lists must not push the confirm button off a phone screen. */
+    max-height: 40vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-raised-2);
+}
+
+.picker-item {
+    width: 100%;
+    min-height: 46px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.picker-item:active { transform: scale(.99); }
+
+.picker-item.is-selected {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    color: var(--accent-ink);
+}
+
+.picker-empty {
+    padding: 14px;
+    color: var(--text-dim);
+    font-size: .9rem;
+}
 
 .sheet-actions {
     display: flex;
