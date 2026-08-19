@@ -1,7 +1,14 @@
-# Web-Warteliste — Entwurf
+# Web-Warteliste — Entwurf und Befunde
 
 Neues Web-Frontend für Vocaluxe mit Songwunsch und Warteliste, gebaut auf
 Branch `feature/web-queue` (abgezweigt von `feature/768-net10-crossplatform`).
+
+> **Wie dieses Dokument zu lesen ist.** Die Abschnitte *Ziel* bis *Rechte* sind
+> der ursprüngliche Entwurf und halten fest, **warum** die Dinge so entschieden
+> wurden — sie werden nicht mehr nachgeführt. Was tatsächlich gebaut wurde und
+> heute gilt, steht ab *Stand der Umsetzung* sowie in `CLAUDE.md`; die
+> Bedienungsseite gehört ganz dorthin. Die Abschnitte zu den gefundenen Fehlern
+> sind Messprotokolle und bleiben, wie sie sind.
 
 ## Ziel
 
@@ -105,8 +112,13 @@ es stattdessen in die Wartelisten-Ansicht.
 ## API
 
 Neue Endpunkte unter `/api/…` mit echten HTTP-Verben. Die bestehenden
-Endpunkte bleiben unangetastet, damit die alte Website funktionsfähig bleibt,
-bis die neue steht.
+Endpunkte sollten zunächst unangetastet bleiben, damit die alte Website
+funktionsfähig bleibt, bis die neue steht.
+
+> Inzwischen überholt: Die alte API wurde vollständig entfernt (`CWebservice`
+> samt `/legacy`), nachdem das neue Frontend stand. Die brauchbaren Teile —
+> Tastatur-Fernbedienung, Songabbruch — sind unter `/api/remote/…` und
+> `/api/queue/abort-current` neu entstanden.
 
 | Endpunkt | Zweck |
 |---|---|
@@ -149,9 +161,10 @@ Backend und Frontend sind gebaut und am laufenden Vocaluxe verifiziert.
 
 Geändert wurden außerdem: `CVocaluxeServer` (Spielstart, Songsuche, Gastprofil,
 `DoTask`-Timeout, `UseStaticFiles`), `CGame`/`ISongQueue`/`CSongQueue`
-(`AddSongById`), `SessionControl` (Profil-Login, Timeout 4 h), `CWebservice`
-(alte Startseite nach `/legacy`, Timeout → HTTP 503) und `CScreenScore`
-(schließt den gespielten Eintrag ab).
+(`AddSongById`), `SessionControl` (Profil-Login, Timeout 4 h) und `CScreenScore`
+(schließt den gespielten Eintrag ab). Die Fehlerbehandlung, die einen
+Hauptthread-Timeout in ein HTTP 503 übersetzt, wanderte später aus `CWebservice`
+in `CWebQueueApi`, als die alte API entfernt wurde.
 
 ### Verifiziert am laufenden System
 
@@ -228,7 +241,8 @@ starten können. Der Start ist hier auch kein Verwaltungsakt, sondern genau die
 Bestätigung „wir stehen am Mikro". Umsortieren, Überspringen und das Löschen
 fremder Einträge bleiben Admin-Sache.
 
-**Die Beamer-Anzeige wurde nicht gebaut.** Der halbautomatische Start läuft über
+**Die Beamer-Anzeige wurde zunächst nicht gebaut** (inzwischen nachgeholt, siehe
+unten). Der halbautomatische Start läuft über
 den Knopf im Web-Frontend, was ohne neuen Screen, ohne `EScreen`-Eintrag und
 ohne Theme-XML auskommt — und den Sänger dort bedienen lässt, wo er ohnehin
 hinschaut. Eine Anzeige am Beamer bleibt möglich und wäre der nächste sinnvolle
@@ -236,11 +250,12 @@ Schritt, ist aber für den Ablauf nicht nötig.
 
 ## Offen
 
-- **Admin-Rolle vergeben.** Das Henne-Ei-Problem bleibt: `setUserRole` verlangt
-  `EditAllProfiles`, das niemand hat. Bis dahin von Hand in der Profildatei:
-  `<UserRole>TR_USERROLE_ADMIN</UserRole>` in
-  `~/.config/Vocaluxe/Profiles/<Name>.xml`.
-- **Beamer-Anzeige** (siehe oben).
+- ~~Admin-Rolle vergeben~~ — geklärt: Rechte gelten nur für Profile **mit PIN**,
+  vergeben wird die Rolle bewusst von Hand. Die Reihenfolge (erst PIN, dann
+  Rolle) steht in `CLAUDE.md`.
+- ~~Beamer-Anzeige~~ — erledigt: Der Score-Screen kündigt den nächsten Eintrag
+  mit 30-Sekunden-Countdown an, Enter startet ihn, Hoch/Runter blättert durch
+  die Wartenden. Details in `CLAUDE.md`.
 - **Kein HTTPS**, keine Authentifizierung über das Profil hinaus. Das ist für
   ein Heimnetz gedacht und sollte nicht ins offene Netz.
 
