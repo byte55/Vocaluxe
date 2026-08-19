@@ -66,6 +66,11 @@ namespace Vocaluxe.SongQueue
             return CSongs.AllSongs.Count > absoluteIndex && _AddSong(CSongs.AllSongs[absoluteIndex].ID, gameMode);
         }
 
+        public bool AddSongById(int songId, EGameMode gameMode)
+        {
+            return CSongs.GetSong(songId) != null && _AddSong(songId, gameMode);
+        }
+
         private bool _AddSong(int songID, EGameMode gameMode)
         {
             if (!CSongs.GetSong(songID).IsGameModeAvailable(gameMode))

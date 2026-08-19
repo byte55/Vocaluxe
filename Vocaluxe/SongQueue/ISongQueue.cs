@@ -27,6 +27,13 @@ namespace Vocaluxe.SongQueue
 
         bool AddVisibleSong(int visibleIndex, EGameMode gameMode);
         bool AddSong(int absoluteIndex, EGameMode gameMode);
+
+        /// <summary>
+        ///     Adds a song by its stable song ID. The index-based overloads above are unusable for
+        ///     anything that outlives the current screen state: AddVisibleSong depends on the active
+        ///     category/search filter, so the same index means a different song after a filter change.
+        /// </summary>
+        bool AddSongById(int songId, EGameMode gameMode);
         bool RemoveVisibleSong(int visibleIndex);
         bool RemoveSong(int absoluteIndex);
         void ClearSongs();

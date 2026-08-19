@@ -109,6 +109,11 @@ namespace Vocaluxe.Base
             return _SongQueue.AddSong(absoluteIndex, gameMode);
         }
 
+        public static bool AddSongById(int songId, EGameMode gameMode)
+        {
+            return _SongQueue.AddSongById(songId, gameMode);
+        }
+
         public static bool RemoveVisibleSong(int visibleIndex)
         {
             return _SongQueue.RemoveVisibleSong(visibleIndex);
