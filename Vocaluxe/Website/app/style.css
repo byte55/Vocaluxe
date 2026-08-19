@@ -450,6 +450,30 @@ select:focus {
 
 .hint { margin: 12px 0 24px; font-size: .85rem; color: var(--text-dim); }
 
+/* ---------------- PIN ---------------- */
+
+.pin-form { margin-bottom: 24px; }
+
+.pin-input {
+    width: 100%;
+    min-height: var(--tap);
+    margin-bottom: 8px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    /* Digits in a PIN are easier to check one by one than in a proportional font. */
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .3em;
+}
+
+.pin-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.pin-actions { display: flex; gap: 8px; }
+.pin-actions .btn { flex: 1; }
+
+#pinSheet .pin-input { margin-top: 18px; }
+
 /* ---------------- Songs ---------------- */
 
 .search-bar { position: sticky; top: 0; padding-bottom: 10px; }

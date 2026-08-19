@@ -96,6 +96,19 @@
                 sofort – auch im laufenden Song.
             </p>
 
+            <h2 class="section-title">PIN</h2>
+            <p class="hint" id="pinStatus">–</p>
+            <div class="pin-form">
+                <input id="currentPinInput" class="pin-input" type="password" inputmode="numeric"
+                       pattern="[0-9]*" maxlength="10" placeholder="Bisherige PIN" autocomplete="off" hidden>
+                <input id="newPinInput" class="pin-input" type="password" inputmode="numeric"
+                       pattern="[0-9]*" maxlength="10" placeholder="Neue PIN (4–10 Ziffern)" autocomplete="off">
+                <div class="pin-actions">
+                    <button id="savePinBtn" class="btn btn-primary">PIN speichern</button>
+                    <button id="clearPinBtn" class="btn btn-ghost" hidden>PIN entfernen</button>
+                </div>
+            </div>
+
             <button id="switchProfileBtn" class="btn btn-ghost btn-block">Profil wechseln</button>
         </section>
 
@@ -146,6 +159,24 @@
         <div class="sheet-actions">
             <button class="btn btn-ghost" data-close-sheet>Abbrechen</button>
             <button id="signUpBtn" class="btn btn-primary">Eintragen</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================= PIN-Abfrage ================= -->
+<div id="pinSheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-close-pin></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="pinSheetTitle">
+        <div class="sheet-handle"></div>
+        <div id="pinSheetTitle" class="sheet-title">PIN eingeben</div>
+        <div id="pinSheetName" class="sheet-artist"></div>
+
+        <input id="pinSheetInput" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*"
+               maxlength="10" placeholder="PIN" autocomplete="off">
+
+        <div class="sheet-actions">
+            <button class="btn btn-ghost" data-close-pin>Abbrechen</button>
+            <button id="pinSubmitBtn" class="btn btn-primary">Anmelden</button>
         </div>
     </div>
 </div>

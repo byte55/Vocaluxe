@@ -75,8 +75,8 @@ namespace Vocaluxe.Base.Server
                 if (id == Guid.Empty)
                     return _Error(500, "Could not create the profile");
 
-                Guid session = CSessionControl.OpenSessionForProfile(id);
-                return _Json(new {profileId = id.ToString(), playerName = body.Name.Trim(), sessionId = session.ToString()});
+                CSignInResult signIn = CSessionControl.OpenSessionForProfile(id, null);
+                return _Json(new {profileId = id.ToString(), playerName = body.Name.Trim(), sessionId = signIn.SessionId.ToString()});
             });
 
             // Tap-to-identify. Only works for profiles without a password; one with a password still
@@ -88,11 +88,24 @@ namespace Vocaluxe.Base.Server
                 if (body == null || !Guid.TryParse(body.ProfileId, out profileId))
                     return _Error(400, "profileId is required");
 
-                Guid session = CSessionControl.OpenSessionForProfile(profileId);
-                if (session == Guid.Empty)
-                    return _Error(403, "This profile is password protected");
+                CSignInResult result = CSessionControl.OpenSessionForProfile(profileId, body.Pin);
 
-                return _Json(new {sessionId = session.ToString(), profileId = profileId.ToString()});
+                if (result.SessionId != Guid.Empty)
+                    return _Json(new {sessionId = result.SessionId.ToString(), profileId = profileId.ToString()});
+
+                // Answer immediately with the remaining wait instead of holding the request open —
+                // a hanging request looks like a dead app and ties up a thread for nothing.
+                if (result.RetryAfterSeconds > 0 && !result.WrongPin)
+                    return _Error(429, "Zu viele Fehlversuche. Warte " + result.RetryAfterSeconds + " Sekunden.");
+
+                if (result.WrongPin)
+                {
+                    return result.RetryAfterSeconds > 0
+                        ? _Error(429, "PIN falsch. Nächster Versuch in " + result.RetryAfterSeconds + " Sekunden.")
+                        : _Error(403, "PIN falsch.");
+                }
+
+                return _Error(403, "Anmeldung nicht möglich.");
             });
 
             app.MapGet("/api/session", (HttpContext ctx) =>
@@ -110,8 +123,42 @@ namespace Vocaluxe.Base.Server
                         isAdmin,
                         playerName = me == null ? "" : me.PlayerName,
                         difficulty = me == null ? 1 : me.Difficulty,
-                        avatarId = me == null ? -1 : me.AvatarId
+                        avatarId = me == null ? -1 : me.AvatarId,
+                        hasPin = me != null && me.HasPin
                     });
+            });
+
+            app.MapPost("/api/me/pin", async (HttpContext ctx) =>
+            {
+                Guid session = _GetSession(ctx);
+                Guid profileId = CSessionControl.GetUserIdFromSession(session);
+                if (profileId == Guid.Empty)
+                    return _Error(401, "Pick a profile first");
+
+                CPinBody body = await _ReadBody<CPinBody>(ctx);
+                if (body == null)
+                    return _Error(400, "Body fehlt");
+
+                EPinResult result = CVocaluxeServer.DoTask(CVocaluxeServer.SetProfilePin, profileId, body.CurrentPin, body.NewPin);
+                switch (result)
+                {
+                    case EPinResult.Ok:
+                        // Claiming the profile ends everyone else's session on it — that is the whole
+                        // point when somebody else is sitting in it right now.
+                        CSessionControl.InvalidateOtherSessionsForProfile(profileId, session);
+                        return _Json(new {hasPin = !string.IsNullOrEmpty(body.NewPin)});
+                    case EPinResult.WrongCurrentPin:
+                        return _Error(403, "Die bisherige PIN stimmt nicht.");
+                    case EPinResult.InvalidPin:
+                        return _Error(400, "Die PIN muss aus 4 bis 10 Ziffern bestehen.");
+                    case EPinResult.AdminNeedsPin:
+                        return _Error(403, "Admin-Profile brauchen eine PIN, sie lässt sich nicht entfernen.");
+                    case EPinResult.AdminWithoutPinLocked:
+                        return _Error(403, "Dieses Admin-Profil hat keine PIN und kann sich selbst keine geben. "
+                                           + "Das muss am Karaoke-Rechner passieren.");
+                    default:
+                        return _Error(404, "Profil nicht gefunden.");
+                }
             });
 
             // Only the bundled avatars are on offer — there is no upload path in this API on
@@ -518,6 +565,13 @@ namespace Vocaluxe.Base.Server
         private class CSessionBody
         {
             public string ProfileId { get; set; }
+            public string Pin { get; set; }
+        }
+
+        private class CPinBody
+        {
+            public string CurrentPin { get; set; }
+            public string NewPin { get; set; }
         }
 
         private class CQueueBody

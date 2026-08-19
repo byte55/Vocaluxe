@@ -26,6 +26,8 @@
         avatars: [],
         newAvatarId: -1,
         avatarId: -1,
+        hasPin: false,
+        pendingProfile: null,
         partnerQuery: '',
         difficulty: 1,
         entries: []
@@ -42,7 +44,8 @@
          'songList', 'moreBtn', 'songSheet', 'sheetTitle', 'sheetArtist', 'sheetMeta', 'partnerBox',
          'partnerLabel', 'micHint', 'partnerSearch', 'partnerList', 'signUpBtn', 'toast', 'meName',
          'difficultyPicker', 'switchProfileBtn', 'profileSearch', 'newAvatarBox', 'newAvatarGrid',
-         'meAvatarGrid', 'meAvatar'].forEach(function (id) {
+         'meAvatarGrid', 'meAvatar', 'pinStatus', 'currentPinInput', 'newPinInput', 'savePinBtn',
+         'clearPinBtn', 'pinSheet', 'pinSheetName', 'pinSheetInput', 'pinSubmitBtn'].forEach(function (id) {
             el[id.replace(/-([a-z])/g, function (m, c) { return c.toUpperCase(); })] = $(id);
         });
     }
@@ -176,18 +179,43 @@
                     ? '<img class="profile-avatar" src="' + avatarUrl(p.avatarId) + '" alt="" loading="lazy">'
                     : '')
                 + '<span class="profile-text">' + escapeHtml(p.playerName)
-                + (p.needsPassword ? '<span class="locked">mit Passwort</span>' : '')
+                + (p.hasPin ? '<span class="locked">mit PIN</span>' : '')
                 + '</span></button>';
         }).join('');
     }
 
-    function signIn(profileId) {
-        return api('POST', '/api/session', {profileId: profileId}).then(function (res) {
+    function signIn(profileId, pin) {
+        return api('POST', '/api/session', {profileId: profileId, pin: pin || null}).then(function (res) {
+            closePinSheet();
             setSession(res.sessionId, res.profileId);
             enterApp();
         }).catch(function (e) {
-            toast(e.status === 403 ? 'Dieses Profil ist passwortgeschützt.' : e.message, true);
+            // 403/429 carry a readable German message from the server (wrong PIN, remaining wait).
+            toast(e.message, true);
+            if (el.pinSheetInput) el.pinSheetInput.select();
         });
+    }
+
+    function openPinSheet(profile) {
+        state.pendingProfile = profile;
+        el.pinSheetName.textContent = profile.playerName;
+        el.pinSheetInput.value = '';
+        el.pinSheet.hidden = false;
+        el.pinSheetInput.focus();
+    }
+
+    function closePinSheet() {
+        el.pinSheet.hidden = true;
+        state.pendingProfile = null;
+    }
+
+    /// A claimed profile asks for its PIN; an unclaimed one is still a single tap.
+    function pickProfile(profileId) {
+        var profile = state.profiles.filter(function (p) { return p.profileId === profileId; })[0];
+        if (profile && profile.hasPin)
+            openPinSheet(profile);
+        else
+            signIn(profileId);
     }
 
     function setSession(sessionId, profileId) {
@@ -245,12 +273,46 @@
         });
     }
 
+    function renderPinSection() {
+        el.pinStatus.textContent = state.hasPin
+            ? 'Dein Profil gehört dir: ohne PIN kommt niemand rein.'
+            : 'Dein Profil ist offen — jeder kann es antippen. Mit einer PIN beanspruchst du es für dich.';
+        el.currentPinInput.hidden = !state.hasPin;
+        el.clearPinBtn.hidden = !state.hasPin;
+        el.newPinInput.placeholder = state.hasPin ? 'Neue PIN (4–10 Ziffern)' : 'PIN (4–10 Ziffern)';
+        el.savePinBtn.textContent = state.hasPin ? 'PIN ändern' : 'PIN setzen';
+    }
+
+    function submitPin(newPin) {
+        var body = {currentPin: el.currentPinInput.value || null, newPin: newPin};
+
+        el.savePinBtn.disabled = true;
+        el.clearPinBtn.disabled = true;
+        api('POST', '/api/me/pin', body)
+            .then(function (res) {
+                state.hasPin = !!res.hasPin;
+                el.currentPinInput.value = '';
+                el.newPinInput.value = '';
+                renderPinSection();
+                toast(state.hasPin ? 'PIN gespeichert.' : 'PIN entfernt.');
+                // Other devices on this profile were just kicked; refresh the list so the lock shows.
+                loadProfiles();
+            })
+            .catch(function (e) { toast(e.message, true); })
+            .then(function () {
+                el.savePinBtn.disabled = false;
+                el.clearPinBtn.disabled = false;
+            });
+    }
+
     function loadMe() {
         return api('GET', '/api/session').then(function (me) {
             if (me.playerName) state.profileName = me.playerName;
             if (typeof me.difficulty === 'number') state.difficulty = me.difficulty;
             if (typeof me.avatarId === 'number') state.avatarId = me.avatarId;
+            state.hasPin = !!me.hasPin;
             renderAvatarGrids();
+            renderPinSection();
             el.whoName.textContent = state.profileName;
             renderMe();
         }).catch(function () { /* ohne Session zeigt die App ohnehin den Login */ });
@@ -508,7 +570,7 @@
     function wire() {
         el.profileList.addEventListener('click', function (e) {
             var btn = e.target.closest('.profile-btn');
-            if (btn) signIn(btn.dataset.id);
+            if (btn) pickProfile(btn.dataset.id);
         });
 
         el.newProfileBtn.addEventListener('click', function () {
@@ -535,6 +597,26 @@
         el.whoBtn.addEventListener('click', function () { switchView('me'); });
         el.switchProfileBtn.addEventListener('click', backToLogin);
 
+        el.savePinBtn.addEventListener('click', function () {
+            var pin = el.newPinInput.value.trim();
+            if (!pin) { toast('Bitte eine PIN eingeben.', true); return; }
+            submitPin(pin);
+        });
+
+        el.clearPinBtn.addEventListener('click', function () { submitPin(''); });
+
+        el.pinSubmitBtn.addEventListener('click', function () {
+            if (state.pendingProfile) signIn(state.pendingProfile.profileId, el.pinSheetInput.value.trim());
+        });
+
+        el.pinSheetInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') el.pinSubmitBtn.click();
+        });
+
+        el.newPinInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') el.savePinBtn.click();
+        });
+
         el.difficultyPicker.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-difficulty]');
             if (btn) setDifficulty(Number(btn.dataset.difficulty));
@@ -549,6 +631,7 @@
             if (goto) switchView(goto.dataset.goto);
 
             if (e.target.closest('[data-close-sheet]')) closeSheet();
+            if (e.target.closest('[data-close-pin]')) closePinSheet();
 
             var songBtn = e.target.closest('.song-item');
             if (songBtn) {

@@ -193,6 +193,31 @@ namespace Vocaluxe.Base.Server
         public string LastChanged;
     }
 
+    /// <summary>Outcome of a sign-in attempt.</summary>
+    public class CSignInResult
+    {
+        public Guid SessionId;
+        public bool WrongPin;
+
+        /// <summary>Seconds to wait before the next try; 0 when there is no wait.</summary>
+        public int RetryAfterSeconds;
+    }
+
+    /// <summary>Outcome of setting or clearing a profile PIN.</summary>
+    public enum EPinResult
+    {
+        Ok,
+        UnknownProfile,
+        WrongCurrentPin,
+        InvalidPin,
+
+        /// <summary>Admin profiles must keep a PIN — clearing it would quietly disarm their rights.</summary>
+        AdminNeedsPin,
+
+        /// <summary>An admin profile without a PIN cannot give itself one; see CVocaluxeServer.</summary>
+        AdminWithoutPinLocked
+    }
+
     /// <summary>Outcome of handing a queue entry to the game.</summary>
     public enum EStartRequestResult
     {
@@ -230,7 +255,8 @@ namespace Vocaluxe.Base.Server
         public string ProfileId { get; set; }
         public string PlayerName { get; set; }
         public bool IsGuest { get; set; }
-        public bool NeedsPassword { get; set; }
+        /// <summary>The profile is claimed: signing in needs its PIN.</summary>
+        public bool HasPin { get; set; }
 
         /// <summary>0 = easy, 1 = normal, 2 = hard (<see cref="VocaluxeLib.EGameDifficulty" />).</summary>
         public int Difficulty { get; set; }

@@ -892,6 +892,80 @@ namespace Vocaluxe.Base.Server
             return true;
         }
 
+        #region PIN
+
+        /// <summary>Whether a profile is claimed by a PIN.</summary>
+        public static bool HasPin(Guid profileId)
+        {
+            CProfile profile = CProfiles.GetProfile(profileId);
+            return profile != null && profile.PasswordHash != null;
+        }
+
+        public static bool IsAdminProfile(Guid profileId)
+        {
+            CProfile profile = CProfiles.GetProfile(profileId);
+            return profile != null && profile.UserRole.HasFlag(EUserRole.TR_USERROLE_ADMIN);
+        }
+
+        /// <summary>Digits only, so phones show a number pad and nobody types a real password here.</summary>
+        private static bool _IsValidPin(string pin)
+        {
+            return !string.IsNullOrEmpty(pin) && pin.Length >= 4 && pin.Length <= 10 && pin.All(char.IsDigit);
+        }
+
+        /// <summary>
+        ///     Sets, changes or clears the PIN of a profile. An empty <paramref name="newPin" /> clears it.
+        /// </summary>
+        public static EPinResult SetProfilePin(Guid profileId, string currentPin, string newPin)
+        {
+            CProfile profile = CProfiles.GetProfile(profileId);
+            if (profile == null)
+                return EPinResult.UnknownProfile;
+
+            bool hasPin = profile.PasswordHash != null;
+            bool isAdmin = profile.UserRole.HasFlag(EUserRole.TR_USERROLE_ADMIN);
+
+            // The double floor: an admin profile without a PIN cannot give itself one. Otherwise
+            // anyone who walks into such a profile could claim it and inherit the rights with it.
+            // Admin profiles get their first PIN before the role is granted, by hand.
+            if (isAdmin && !hasPin)
+                return EPinResult.AdminWithoutPinLocked;
+
+            // Changing an existing PIN requires the old one — a stolen session must not be enough.
+            if (hasPin && !ValidatePassword(profileId, currentPin ?? ""))
+                return EPinResult.WrongCurrentPin;
+
+            if (string.IsNullOrEmpty(newPin))
+            {
+                // Clearing would silently disarm the rights, which nobody would ever connect to the
+                // missing PIN. Refuse it outright instead.
+                if (isAdmin)
+                    return EPinResult.AdminNeedsPin;
+
+                profile.PasswordHash = null;
+                profile.PasswordSalt = null;
+            }
+            else
+            {
+                if (!_IsValidPin(newPin))
+                    return EPinResult.InvalidPin;
+
+                byte[] salt = new byte[32];
+                using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
+                    rng.GetNonZeroBytes(salt);
+
+                profile.PasswordSalt = salt;
+                profile.PasswordHash = _Hash(new UTF8Encoding().GetBytes(newPin), salt);
+            }
+
+            CProfiles.SaveProfiles();
+            CLog.Information("Profile " + profile.PlayerName + ": PIN "
+                             + (string.IsNullOrEmpty(newPin) ? "cleared" : (hasPin ? "changed" : "set")));
+            return EPinResult.Ok;
+        }
+
+        #endregion
+
         #region avatars
 
         /// <summary>
@@ -949,7 +1023,7 @@ namespace Vocaluxe.Base.Server
                                     ProfileId = p.ID.ToString(),
                                     PlayerName = p.PlayerName,
                                     IsGuest = !p.UserRole.HasFlag(EUserRole.TR_USERROLE_NORMAL),
-                                    NeedsPassword = p.PasswordHash != null,
+                                    HasPin = p.PasswordHash != null,
                                     Difficulty = (int)p.Difficulty,
                                     AvatarId = p.Avatar == null ? -1 : p.Avatar.ID
                                 })
@@ -969,7 +1043,7 @@ namespace Vocaluxe.Base.Server
                     ProfileId = profile.ID.ToString(),
                     PlayerName = profile.PlayerName,
                     IsGuest = !profile.UserRole.HasFlag(EUserRole.TR_USERROLE_NORMAL),
-                    NeedsPassword = profile.PasswordHash != null,
+                    HasPin = profile.PasswordHash != null,
                     Difficulty = (int)profile.Difficulty,
                     AvatarId = profile.Avatar == null ? -1 : profile.Avatar.ID
                 };
