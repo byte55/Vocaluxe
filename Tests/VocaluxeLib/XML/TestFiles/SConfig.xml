@@ -49,6 +49,7 @@
     <PlayBackLib>GstreamerSharp</PlayBackLib>
     <RecordLib>PortAudio</RecordLib>
     <AudioBufferSize>B2048</AudioBufferSize>
+    <AudioDecoder>Acinerella</AudioDecoder>
     <AudioLatency>0</AudioLatency>
     <BackgroundMusic>TR_CONFIG_ON</BackgroundMusic>
     <BackgroundMusicVolume>30</BackgroundMusicVolume>

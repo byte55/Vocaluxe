@@ -135,6 +135,9 @@ namespace Vocaluxe.Base
             public ERecordLib RecordLib;
             [DefaultValue(EBufferSize.B2048)]
             public EBufferSize AudioBufferSize;
+            // Acinerella until the direct ffmpeg decoder has proven itself on real material.
+            [DefaultValue(EAudioDecoder.Acinerella)]
+            public EAudioDecoder AudioDecoder;
             [XmlRanged(-500, 500)]
             public int AudioLatency;
             // ReSharper disable MemberHidesStaticFromOuterClass

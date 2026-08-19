@@ -21,7 +21,9 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Vocaluxe.Base;
+using Vocaluxe.Lib.FFmpeg;
 using Vocaluxe.Lib.Sound.Playback.Decoder;
+using VocaluxeLib;
 using VocaluxeLib.Log;
 
 namespace Vocaluxe.Lib.Sound.Playback.PortAudio
@@ -40,6 +42,18 @@ namespace Vocaluxe.Lib.Sound.Playback.PortAudio
 
         private PortAudioSharp.Stream.Callback _PaStreamCallback;
         private IAudioDecoder _Decoder;
+
+        /// <summary>
+        ///     Picks the audio decoder. The direct ffmpeg one only takes over when it was explicitly
+        ///     selected <b>and</b> the libraries are actually there - a missing ffmpeg must not leave
+        ///     the machine without sound.
+        /// </summary>
+        private static IAudioDecoder _CreateDecoder()
+        {
+            if (CConfig.Config.Sound.AudioDecoder == EAudioDecoder.FFmpeg && CFFmpegLoader.IsAvailable)
+                return new CAudioDecoderFFmpeg();
+            return new CAudioDecoderAcinerella();
+        }
         private float _BytesPerSecond;
         private float _Latency;
         private bool _NoMoreData;
@@ -162,7 +176,7 @@ namespace Vocaluxe.Lib.Sound.Playback.PortAudio
                 return false;
             }
 
-            _Decoder = new CAudioDecoderFFmpeg();
+            _Decoder = _CreateDecoder();
             if (!_Decoder.Open(_Medium))
             {
                 Dispose();

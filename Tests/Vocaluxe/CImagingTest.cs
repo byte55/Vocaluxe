@@ -18,14 +18,15 @@
 using System.IO;
 using NUnit.Framework;
 using SkiaSharp;
-using Vocaluxe.Base.Server;
 
 namespace Tests.Vocaluxe
 {
     /// <summary>
-    ///     Headless coverage for the GDI+ -> SkiaSharp image migration (#768). These run on every OS in
-    ///     CI and also prove the native libSkiaSharp loads and rasterizes there - the unit suite otherwise
-    ///     only exercises platform-independent VocaluxeLib logic, none of the ported subsystems.
+    ///     Headless coverage for the GDI+ -> SkiaSharp image migration (#768). Proves the native
+    ///     libSkiaSharp loads and rasterizes - the unit suite otherwise only exercises
+    ///     platform-independent VocaluxeLib logic, none of the ported subsystems.
+    ///     The two CBase64Image round-trip tests went with the old web API: that type existed only to
+    ///     ship covers and uploaded photos as base64, and neither path is left.
     /// </summary>
     [TestFixture]
     public class CImagingTest
@@ -38,53 +39,6 @@ namespace Tests.Vocaluxe
                 using (var img = SKImage.FromBitmap(bmp))
                 using (var data = img.Encode(SKEncodedImageFormat.Png, 100))
                     return data.ToArray();
-            }
-        }
-
-        [Test]
-        public void CBase64Image_DetectsFormatAndRoundTripsThroughSkia()
-        {
-            byte[] png = _MakePng(4, 3, SKColors.Red);
-            var image = new CBase64Image(png, "png");
-
-            Assert.AreEqual("png", image.GetImageType());
-
-            string outFile = Path.Combine(Path.GetTempPath(), "voc_img_test_" + TestContext.CurrentContext.Test.ID + ".png");
-            try
-            {
-                // SaveTo decodes the embedded base64 via SkiaSharp and re-encodes it to disk.
-                image.SaveTo(outFile);
-
-                using (var reloaded = SKBitmap.Decode(outFile))
-                {
-                    Assert.IsNotNull(reloaded, "decoded image should not be null");
-                    Assert.AreEqual(4, reloaded.Width);
-                    Assert.AreEqual(3, reloaded.Height);
-                    // PNG is lossless, so the fill colour must survive the encode/decode round-trip.
-                    Assert.AreEqual(SKColors.Red, reloaded.GetPixel(0, 0));
-                }
-            }
-            finally
-            {
-                if (File.Exists(outFile))
-                    File.Delete(outFile);
-            }
-        }
-
-        [Test]
-        public void CBase64Image_FromFile_DetectsPngViaCodec()
-        {
-            string inFile = Path.Combine(Path.GetTempPath(), "voc_img_fromfile_" + TestContext.CurrentContext.Test.ID + ".png");
-            File.WriteAllBytes(inFile, _MakePng(2, 2, SKColors.Blue));
-            try
-            {
-                CBase64Image image = CBase64Image.FromFile(inFile);
-                Assert.AreEqual("png", image.GetImageType());
-            }
-            finally
-            {
-                if (File.Exists(inFile))
-                    File.Delete(inFile);
             }
         }
 

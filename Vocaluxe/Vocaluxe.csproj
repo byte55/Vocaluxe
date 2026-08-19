@@ -40,6 +40,9 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
+    <!-- Direkte ffmpeg-Bindings. Binden zur Laufzeit gegen die System-Bibliotheken
+         (libavcodec.so.62 usw.), es wird nichts mitgeliefert. -->
+    <PackageReference Include="FFmpeg.AutoGen" Version="8.1.0" />
     <PackageReference Include="OpenTK" Version="4.9.4" />
     <PackageReference Include="QRCoder" Version="1.8.0" />
     <!-- Party modes are compiled from source at runtime; CodeDom types live in this package on modern .NET.

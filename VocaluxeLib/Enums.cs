@@ -137,6 +137,16 @@ namespace VocaluxeLib
         // ReSharper restore InconsistentNaming
     }
 
+    /// <summary>
+    ///     Which decoder does the audio. Acinerella is the C wrapper Vocaluxe has always used;
+    ///     FFmpeg talks to the ffmpeg libraries directly.
+    /// </summary>
+    public enum EAudioDecoder
+    {
+        Acinerella,
+        FFmpeg
+    }
+
     public enum EOffOn
     {
         // ReSharper disable InconsistentNaming
