@@ -45,19 +45,23 @@ Bibliothek wurde nicht geladen — dann stimmt der `SongFolder` in der
 `Config.xml` nicht (die echte Bibliothek liegt in `~/UltraStar Songs`, mit
 Leerzeichen im Pfad).
 
-**Mikrofone.** Ist der USB-Codec da (`arecord -l`, Karte `CODEC`)? Sind in der
-`Config.xml` beide Spieler auf dasselbe Gerät und auf **Kanal 1 und 2** gelegt?
-Prüfe zusätzlich mit einer kurzen Aufnahme, ob überhaupt Pegel ankommt:
+**Mikrofone — nur die Konfiguration.** Ist der USB-Codec da (`arecord -l`, Karte
+`CODEC`)? Sind in der `Config.xml` beide Spieler auf dasselbe Gerät und auf
+**Kanal 1 und 2** gelegt?
 
-```bash
-arecord -D pipewire -f S16_LE -c 2 -r 48000 -d 3 /tmp/preflight-mic.wav
-```
+**Miss den Pegel nicht selbst.** Eine Aufnahme ohne jemanden, der ins Mikrofon
+singt, findet nur das Eigenrauschen des Wandlers und meldet fälschlich einen
+toten Aufnahmeweg — das ist hier schon passiert. Der Pegel ist ein Handgriff für
+einen Menschen: `~/Desktop/messung.sh` zeigt beide Kanäle live an. Nenne das als
+verbleibende Aufgabe und gib die zwei Dinge mit, auf die dabei zu achten ist:
 
-Kommt digitale Stille bei beiden Kanälen, ist fast immer der Taster
-`USB/2-TR TO MAIN MIX` am Mixer gedrückt — der schaltet den Aufnahmeweg stumm,
-während alles andere normal aussieht. Nenne das ausdrücklich, es ist die
-häufigste Ursache. Kommt nur auf einem Kanal etwas an, stimmt das Panorama
-nicht: MIC 1 gehört hart nach links, MIC 2 hart nach rechts.
+- **Beim Singen einpegeln, nicht beim Sprechen** (Zielbereich 60–70 % Spitze) —
+  Sprechen ist deutlich leiser und führt zu einer Einstellung, die beim Singen
+  clippt.
+- Kommt **gar nichts** an, ist fast immer der Taster `USB/2-TR TO MAIN MIX` am
+  Mixer gedrückt: Er stummt den Aufnahmeweg, während Mixer, Lampen und
+  Kompressoranzeige völlig normal aussehen. Rührt sich nur **ein** Kanal, stimmt
+  das Panorama nicht — MIC 1 gehört hart nach links, MIC 2 hart nach rechts.
 
 ## Bericht
 
