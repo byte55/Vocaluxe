@@ -68,7 +68,8 @@ namespace Vocaluxe.Base.Server
                         ProfileId = p.ProfileId.ToString(),
                         PlayerName = p.PlayerName,
                         IsGuest = p.Type == 0,
-                        NeedsPassword = !string.IsNullOrEmpty(p.Password)
+                        NeedsPassword = !string.IsNullOrEmpty(p.Password),
+                        Difficulty = p.Difficulty
                     }).ToArray();
                 return _Json(result);
             });
@@ -111,7 +112,30 @@ namespace Vocaluxe.Base.Server
                     return _Error(401, "No session");
 
                 bool isAdmin = CSessionControl.RequestRight(session, EUserRights.EditAllProfiles);
-                return _Json(new {profileId = profileId.ToString(), isAdmin});
+                SProfileListEntry me = CVocaluxeServer.DoTask(CVocaluxeServer.GetProfileSummary, profileId);
+                return _Json(new
+                    {
+                        profileId = profileId.ToString(),
+                        isAdmin,
+                        playerName = me == null ? "" : me.PlayerName,
+                        difficulty = me == null ? 1 : me.Difficulty
+                    });
+            });
+
+            // Difficulty is a property of the profile, not of a single request, so it lives here
+            // rather than on the queue entry. Only ever applies to your own profile.
+            app.MapPost("/api/me/difficulty", async (HttpContext ctx) =>
+            {
+                Guid profileId = CSessionControl.GetUserIdFromSession(_GetSession(ctx));
+                if (profileId == Guid.Empty)
+                    return _Error(401, "Pick a profile first");
+
+                CDifficultyBody body = await _ReadBody<CDifficultyBody>(ctx);
+                if (body == null || body.Difficulty < 0 || body.Difficulty > 2)
+                    return _Error(400, "difficulty must be 0, 1 or 2");
+
+                bool ok = CVocaluxeServer.DoTask(CVocaluxeServer.SetProfileDifficulty, profileId, body.Difficulty);
+                return ok ? _Json(new {difficulty = body.Difficulty}) : _Error(500, "Could not save the difficulty");
             });
         }
 
@@ -288,14 +312,24 @@ namespace Vocaluxe.Base.Server
         {
             try
             {
-                bool ok = CVocaluxeServer.DoTask(CVocaluxeServer.StartSongRequest, requestId);
-                return ok ? _Json(new {started = true, requestId}) : _Error(409, "Could not start this entry");
+                EStartRequestResult result = CVocaluxeServer.DoTask(CVocaluxeServer.StartSongRequest, requestId);
+                switch (result)
+                {
+                    case EStartRequestResult.Started:
+                        return _Json(new {started = true, requestId});
+                    case EStartRequestResult.Busy:
+                        return _Error(409, "Es läuft gerade ein Song – warte, bis er zu Ende ist.");
+                    case EStartRequestResult.UnknownRequest:
+                        return _Error(404, "Diesen Eintrag gibt es nicht mehr.");
+                    default:
+                        return _Error(409, "Dieser Song lässt sich gerade nicht starten.");
+                }
             }
             catch (TimeoutException)
             {
                 // The render loop is not picking up work — starting a song is exactly the operation
                 // that cannot be faked, so say so plainly instead of pretending it worked.
-                return _Error(503, "The game is not responding; is the window minimized with VSync on?");
+                return _Error(503, "Das Spiel antwortet nicht. Läuft Vocaluxe noch?");
             }
         }
 
@@ -419,6 +453,11 @@ namespace Vocaluxe.Base.Server
         private class CPositionBody
         {
             public int Position { get; set; }
+        }
+
+        private class CDifficultyBody
+        {
+            public int Difficulty { get; set; }
         }
 
         #endregion

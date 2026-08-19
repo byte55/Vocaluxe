@@ -715,17 +715,26 @@ namespace Vocaluxe.Base.Server
         ///     Hands a queue entry to the game: loads the song, seats the singers and jumps into the
         ///     sing screen. <b>Main thread only</b> — call it through DoTask.
         /// </summary>
-        public static bool StartSongRequest(int requestId)
+        public static EStartRequestResult StartSongRequest(int requestId)
         {
             CSongRequest request = CSongRequests.GetById(requestId);
             if (request == null)
-                return false;
+                return EStartRequestResult.UnknownRequest;
+
+            // Never start on top of a running song. Replacing CGame's queue while the sing screen is
+            // live makes it fail to load the "current" song, call _FinishedSinging and fade again
+            // from inside CGraphics._FinishScreenFading -- a re-entrant fade that dies with a
+            // NullReferenceException and takes the whole game down. Checking NextScreen too covers
+            // an impatient second tap while the first start is still fading in.
+            IMenu singScreen = CGraphics.GetScreen(EScreen.Sing);
+            if (CGraphics.CurrentScreen == singScreen || CGraphics.NextScreen == singScreen)
+                return EStartRequestResult.Busy;
 
             CSong song = CSongs.GetSong(request.SongId);
             if (song == null)
             {
                 CLog.Error("Song request " + requestId + " refers to unknown song id " + request.SongId);
-                return false;
+                return EStartRequestResult.SongUnavailable;
             }
 
             // A duet only works if we actually have one singer per voice; otherwise sing it normally.
@@ -737,7 +746,7 @@ namespace Vocaluxe.Base.Server
             if (!CGame.AddSongById(request.SongId, mode))
             {
                 CLog.Error("Song " + request.SongId + " does not support game mode " + mode);
-                return false;
+                return EStartRequestResult.SongUnavailable;
             }
 
             int numPlayers = request.SingerProfileIds.Count;
@@ -761,7 +770,7 @@ namespace Vocaluxe.Base.Server
             CSongRequests.MarkPlaying(requestId);
             CGraphics.FadeTo(EScreen.Sing);
             CLog.Information("Started song request " + requestId + " (" + request.Artist + " - " + request.Title + ") for " + numPlayers + " player(s)");
-            return true;
+            return EStartRequestResult.Started;
         }
 
         /// <summary>Song info for a request, resolved on the main thread.</summary>
@@ -839,6 +848,60 @@ namespace Vocaluxe.Base.Server
             CProfile created = CProfiles.GetProfiles()
                                         .LastOrDefault(p => p.PlayerName == profile.PlayerName);
             return created == null ? Guid.Empty : created.ID;
+        }
+
+        /// <summary>
+        ///     Changes a profile's difficulty. CGame reads it live per note
+        ///     (<see cref="CProfiles.GetDifficulty" />), so this takes effect immediately -- even for a
+        ///     song that is already running.
+        /// </summary>
+        public static bool SetProfileDifficulty(Guid profileId, int difficulty)
+        {
+            if (difficulty < 0 || difficulty > 2)
+                return false;
+
+            CProfile profile = CProfiles.GetProfile(profileId);
+            if (profile == null)
+                return false;
+
+            // Copy every field across. EditProfile replaces the stored profile wholesale, so anything
+            // left out here is lost -- including the password hash, which would silently unlock a
+            // protected profile. (The old SendProfileData path has exactly that bug.)
+            var updated = new CProfile
+                {
+                    ID = profile.ID,
+                    FilePath = profile.FilePath,
+                    PlayerName = profile.PlayerName,
+                    Avatar = profile.Avatar,
+                    UserRole = profile.UserRole,
+                    Active = profile.Active,
+                    PasswordHash = profile.PasswordHash,
+                    PasswordSalt = profile.PasswordSalt,
+                    Difficulty = (EGameDifficulty)difficulty
+                };
+
+            CProfiles.EditProfile(updated);
+            CProfiles.Update();
+            CProfiles.SaveProfiles();
+            CLog.Information("Profile " + profile.PlayerName + ": difficulty set to " + (EGameDifficulty)difficulty);
+            return true;
+        }
+
+        /// <summary>Name and difficulty of one profile, without loading its avatar.</summary>
+        public static SProfileListEntry GetProfileSummary(Guid profileId)
+        {
+            CProfile profile = CProfiles.GetProfile(profileId);
+            if (profile == null)
+                return null;
+
+            return new SProfileListEntry
+                {
+                    ProfileId = profile.ID.ToString(),
+                    PlayerName = profile.PlayerName,
+                    IsGuest = !profile.UserRole.HasFlag(EUserRole.TR_USERROLE_NORMAL),
+                    NeedsPassword = profile.PasswordHash != null,
+                    Difficulty = (int)profile.Difficulty
+                };
         }
 
         public static bool IsSongLibraryReady()

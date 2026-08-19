@@ -193,6 +193,17 @@ namespace Vocaluxe.Base.Server
         public string LastChanged;
     }
 
+    /// <summary>Outcome of handing a queue entry to the game.</summary>
+    public enum EStartRequestResult
+    {
+        Started,
+        UnknownRequest,
+        SongUnavailable,
+
+        /// <summary>A song is already running — starting on top of it would crash the game.</summary>
+        Busy
+    }
+
     #region web queue API (System.Text.Json, no DataContract needed)
 
     /// <summary>One entry of the paged song list used by the new web UI.</summary>
@@ -220,6 +231,9 @@ namespace Vocaluxe.Base.Server
         public string PlayerName { get; set; }
         public bool IsGuest { get; set; }
         public bool NeedsPassword { get; set; }
+
+        /// <summary>0 = easy, 1 = normal, 2 = hard (<see cref="VocaluxeLib.EGameDifficulty" />).</summary>
+        public int Difficulty { get; set; }
     }
 
     #endregion
