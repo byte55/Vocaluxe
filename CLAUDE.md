@@ -96,6 +96,17 @@ maschinenspezifisch, sondern treffen jeden Linux-Build mit aktuellem ffmpeg:
   `acinerella.c` arbeitest: die Datei stammt aus der ffmpeg-2/4-Ära, weitere
   API-Brüche sind wahrscheinlich. `av_init_packet` ist der nächste Kandidat,
   es warnt bereits als deprecated.
+- **32-Bit-Überlauf im Acinerella-Zeitstempel.** `ac_package_data.pts` war ein
+  `int`, ffmpegs 64-Bit-Wert wurde per Cast daraufgestutzt. Mit der Zeitbasis, die
+  ffmpeg für MP3 nutzt (1/14112000), läuft das nach
+  `INT32_MAX / 14112000 = 152,175 s` über und wird negativ — die Prüfung
+  `pts > 0` schlägt danach für den Rest der Datei fehl. Der Decoder meldete dann
+  bis zum Songende **denselben Zeitstempel**, obwohl er weiter Audio lieferte.
+  Sichtbar als: **Bild friert ein, Ton läuft weiter**, Lyrics und Video stehen,
+  die Notenbewertung flackert — und nach dem Ende der MP3 läuft alles normal
+  weiter. Betroffen war **jeder Song über ~2,5 Minuten**, also praktisch die
+  ganze Bibliothek. Wichtig beim Debuggen: Wer nur misst, *wann* ein Song endet,
+  sieht nichts — der Ton läuft ja bis zum Schluss.
 - **PitchTracker mit `g++` statt `gcc` gelinkt.** Alle Objekte sind C++, `gcc`
   zieht libstdc++ nicht mit. Die `.so` hatte ~40 ungelöste Symbole und wäre
   erst beim `dlopen` zur Laufzeit gescheitert, nicht beim Build.
@@ -191,6 +202,11 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
   Komfortverzicht, sondern verhindert einen Absturz (Details in
   `docs/web-queue.md`). Warten, bis die Auswertung erscheint.
 - **Die alte jQuery-Mobile-Oberfläche** liegt weiterhin unter `/legacy`.
+- **Live-Updates halten eine Dauerverbindung offen** (`/api/events`, Server-Sent
+  Events). Beim Beenden wartet Kestrel auf laufende Anfragen — deshalb reagiert
+  der Stream auf `ApplicationStopping` und der Shutdown-Timeout steht auf 2 s.
+  Ohne beides hing das Beenden über das Hauptmenü 30 Sekunden, sobald auch nur
+  ein Handy die Seite offen hatte.
 
 ### PIN: ein Profil für sich beanspruchen
 
