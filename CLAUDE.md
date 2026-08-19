@@ -201,7 +201,19 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
 - **Ein Song lässt sich nicht starten, solange einer läuft.** Das ist kein
   Komfortverzicht, sondern verhindert einen Absturz (Details in
   `docs/web-queue.md`). Warten, bis die Auswertung erscheint.
-- **Die alte jQuery-Mobile-Oberfläche** liegt weiterhin unter `/legacy`.
+- **Die alte API ist entfernt.** `CWebservice` mit `/sendProfile`, `/sendPhoto`,
+  `/sendKeyEvent`, den Playlist-Endpunkten und `/legacy` gibt es nicht mehr —
+  sie war ein zweiter, weiter offener Zugang zum selben Spiel. Die Dateien unter
+  `Vocaluxe/Website/` (index.html, css, img, js, locales) bleiben als Referenz
+  im Repo, werden aber nicht mehr ausgeliefert und nicht mehr mitgebaut.
+- **Fernbedienung**: `POST /api/remote/key` (Tasten ins Spiel, braucht
+  `UseKeyboard`, also Admin **mit PIN**), `GET /api/remote/state` liefert den
+  aktuellen Screen. Damit lässt sich das Spiel vom Handy steuern, wenn niemand
+  an der Tastatur sitzt.
+- **Laufenden Song abbrechen**: `POST /api/queue/abort-current` bzw. der Knopf
+  auf der „Läuft gerade"-Karte (nur Admin). Blendet direkt zur Songauswahl
+  zurück — nicht über simulierte Tasten, denn Escape schaltet im Sing-Screen nur
+  die Pause um; es bräuchte Escape *und* Enter.
 - **Live-Updates halten eine Dauerverbindung offen** (`/api/events`, Server-Sent
   Events). Beim Beenden wartet Kestrel auf laufende Anfragen — deshalb reagiert
   der Stream auf `ApplicationStopping` und der Shutdown-Timeout steht auf 2 s.
