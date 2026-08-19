@@ -70,6 +70,14 @@ Managed ist fast alles: **OpenTK 4** (Fenster + OpenGL, bringt GLFW als Native
 mit), **SkiaSharp** (Rendering), **PortAudioSharp2** (Audio-Ausgabe),
 Microsoft.Data.Sqlite, Roslyn für die zur Laufzeit kompilierten Party-Modes.
 
+Die Party-Modes werden beim Start aus Quelltext kompiliert — das dauerte 2,4 der
+4,5 Sekunden Startzeit, jedes Mal aufs Neue. Das Ergebnis liegt jetzt unter
+`~/.config/Vocaluxe/PartyModeCache/`, benannt nach einem Hash über die Quellen,
+die Runtime-Version und die Modul-ID von Vocaluxe. Ein neuer Build oder eine
+geänderte Party-Mode-Quelle entwertet den Cache also von selbst; die zehn
+neuesten Einträge bleiben liegen. Damit startet Vocaluxe in rund 1,9 Sekunden.
+Wenn du am Kompilierpfad zweifelst: Ordner löschen, dann wird neu übersetzt.
+
 Nativ und selbst zu bauen sind nur zwei Dinge:
 
 | Bibliothek | Zweck | Quelle |
@@ -109,6 +117,16 @@ ffmpeg, die letzten beiden jeden unter Wayland.
   weiter. Betroffen war **jeder Song über ~2,5 Minuten**, also praktisch die
   ganze Bibliothek. Wichtig beim Debuggen: Wer nur misst, *wann* ein Song endet,
   sieht nichts — der Ton läuft ja bis zum Schluss.
+- **CP1252 war nach dem Port nicht mehr verfügbar.** .NET Framework hatte die
+  Windows-Codepages eingebaut, .NET liefert nur UTF-8, ASCII und UTF-16. Ohne
+  registrierten Provider wirft `Encoding.GetEncoding(1252)`, und `CSongLoader`
+  ruft das für jede `.txt` mit `#ENCODING:CP1252` oder `CP1250` auf. Die Ausnahme
+  wird pro Song gefangen — der Song **fehlt dann einfach in der Bibliothek**, mit
+  einer Zeile in `Song.log` als einzigem Hinweis. Kein Song im aktuellen Bestand
+  deklariert eine Kodierung, deshalb ist es nie aufgefallen; ältere
+  UltraStar-Songs tun es regelmäßig. `Program.Main` registriert jetzt
+  `CodePagesEncodingProvider`. Wenn ein Song scheinbar grundlos nicht auftaucht:
+  zuerst `Song.log` lesen.
 - **PitchTracker mit `g++` statt `gcc` gelinkt.** Alle Objekte sind C++, `gcc`
   zieht libstdc++ nicht mit. Die `.so` hatte ~40 ungelöste Symbole und wäre
   erst beim `dlopen` zur Laufzeit gescheitert, nicht beim Build.
