@@ -111,7 +111,12 @@ typedef ac_audio_decoder *lp_ac_audio_decoder;
 struct _ac_package_data {
     ac_package package;
     AVPacket *pPack;
-    int pts;
+    /* 64 bit, like ffmpeg's own timestamps. As a 32 bit int this overflowed after
+       INT32_MAX / 14112000 = ~152 seconds with the time base ffmpeg uses for MP3,
+       went negative, and every "pts > 0" check below failed from then on -- so the
+       decoder kept reporting the same timecode for the rest of the song while still
+       producing audio. The picture froze, the sound played on. */
+    int64_t pts;
 };
 
 typedef struct _ac_package_data ac_package_data;
@@ -667,7 +672,7 @@ lp_ac_package CALL_CONVT ac_read_package(lp_ac_instance pacInstance)
 	if (av_read_frame_status >=
         0) {
         if (pkt->pPack->dts != AV_NOPTS_VALUE) {
-            pkt->pts = (int)pkt->pPack->dts;
+            pkt->pts = pkt->pPack->dts;
         }
         pkt->package.stream_index = pkt->pPack->stream_index;
         return (lp_ac_package)(pkt);
