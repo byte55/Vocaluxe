@@ -64,6 +64,27 @@
             </div>
         </section>
 
+        <!-- Profil -->
+        <section id="view-me" class="view">
+            <div class="me-card">
+                <div class="me-label">Angemeldet als</div>
+                <div class="me-name" id="meName">–</div>
+            </div>
+
+            <h2 class="section-title">Schwierigkeitsgrad</h2>
+            <div class="segmented" id="difficultyPicker" role="group" aria-label="Schwierigkeitsgrad">
+                <button class="seg" data-difficulty="0">Leicht</button>
+                <button class="seg" data-difficulty="1">Normal</button>
+                <button class="seg" data-difficulty="2">Schwer</button>
+            </div>
+            <p class="hint">
+                Bestimmt, wie genau du die Töne treffen musst. Gilt für dich persönlich und wirkt
+                sofort – auch im laufenden Song.
+            </p>
+
+            <button id="switchProfileBtn" class="btn btn-ghost btn-block">Profil wechseln</button>
+        </section>
+
         <!-- Songsuche -->
         <section id="view-songs" class="view">
             <div class="search-bar">
@@ -83,6 +104,9 @@
         <button class="tab" data-view="songs">
             <span class="tab-label">Songs</span>
         </button>
+        <button class="tab" data-view="me">
+            <span class="tab-label">Ich</span>
+        </button>
     </nav>
 </div>
 
@@ -95,12 +119,12 @@
         <div id="sheetArtist" class="sheet-artist"></div>
         <div id="sheetMeta" class="sheet-meta"></div>
 
-        <div id="duetBox" class="duet" hidden>
-            <label class="duet-label" for="partnerSelect">Duett – mit wem singst du?</label>
+        <div id="partnerBox" class="duet">
+            <label class="duet-label" for="partnerSelect" id="partnerLabel">Zusammen singen mit</label>
             <select id="partnerSelect">
                 <option value="">Alleine singen</option>
             </select>
-            <p class="mic-hint">
+            <p class="mic-hint" id="micHint">
                 Du singst in <strong>Mikro 1</strong>, dein Partner in <strong>Mikro 2</strong>.
             </p>
         </div>

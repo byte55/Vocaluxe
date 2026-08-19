@@ -21,6 +21,7 @@
         songTotal: 0,
         songQuery: '',
         selectedSong: null,
+        difficulty: 1,
         entries: []
     };
 
@@ -32,8 +33,9 @@
         ['view-login', 'app', 'profileList', 'newProfileName', 'newProfileBtn', 'whoName', 'whoBtn',
          'nowPlaying', 'nowSong', 'nowSingers', 'upNext', 'nextSong', 'nextSingers', 'startNextBtn',
          'queueList', 'queueEmpty', 'queueBadge', 'clearFinishedBtn', 'searchInput', 'songCount',
-         'songList', 'moreBtn', 'songSheet', 'sheetTitle', 'sheetArtist', 'sheetMeta', 'duetBox',
-         'partnerSelect', 'signUpBtn', 'toast'].forEach(function (id) {
+         'songList', 'moreBtn', 'songSheet', 'sheetTitle', 'sheetArtist', 'sheetMeta', 'partnerBox',
+         'partnerLabel', 'micHint', 'partnerSelect', 'signUpBtn', 'toast', 'meName',
+         'difficultyPicker', 'switchProfileBtn'].forEach(function (id) {
             el[id.replace(/-([a-z])/g, function (m, c) { return c.toUpperCase(); })] = $(id);
         });
     }
@@ -143,6 +145,7 @@
         state.profileName = currentProfileName();
         el.whoName.textContent = state.profileName;
 
+        loadMe();
         refreshStatus();
         refreshQueue();
         searchSongs('', true);
@@ -157,6 +160,38 @@
     }
 
     /* ------------------------------------------------------------------ Status & Warteliste */
+
+    var DIFFICULTY_NAMES = ['Leicht', 'Normal', 'Schwer'];
+
+    function renderMe() {
+        el.meName.textContent = state.profileName || '–';
+        Array.prototype.forEach.call(el.difficultyPicker.children, function (btn) {
+            btn.classList.toggle('is-active', Number(btn.dataset.difficulty) === state.difficulty);
+        });
+    }
+
+    function loadMe() {
+        return api('GET', '/api/session').then(function (me) {
+            if (me.playerName) state.profileName = me.playerName;
+            if (typeof me.difficulty === 'number') state.difficulty = me.difficulty;
+            el.whoName.textContent = state.profileName;
+            renderMe();
+        }).catch(function () { /* ohne Session zeigt die App ohnehin den Login */ });
+    }
+
+    function setDifficulty(value) {
+        var previous = state.difficulty;
+        state.difficulty = value;
+        renderMe();
+
+        api('POST', '/api/me/difficulty', {difficulty: value})
+            .then(function () { toast('Schwierigkeit: ' + DIFFICULTY_NAMES[value]); })
+            .catch(function (e) {
+                state.difficulty = previous;
+                renderMe();
+                toast(e.message, true);
+            });
+    }
 
     function refreshStatus() {
         return api('GET', '/api/status').then(function (s) {
@@ -291,15 +326,17 @@
         if (song.language) meta.push(song.language);
         el.sheetMeta.textContent = meta.join(' · ');
 
-        el.duetBox.hidden = !song.isDuet;
-        if (song.isDuet) {
-            el.partnerSelect.innerHTML = '<option value="">Alleine singen</option>'
-                + state.profiles
-                    .filter(function (p) { return p.profileId !== state.profileId; })
-                    .map(function (p) {
-                        return '<option value="' + escapeHtml(p.profileId) + '">' + escapeHtml(p.playerName) + '</option>';
-                    }).join('');
-        }
+        // Two people can share any song, not just a marked duet — Vocaluxe simply scores both on
+        // the same voice. Only the wording changes.
+        el.partnerLabel.textContent = song.isDuet
+            ? 'Duett – wer singt die zweite Stimme?'
+            : 'Zusammen singen mit';
+        el.partnerSelect.innerHTML = '<option value="">Alleine singen</option>'
+            + state.profiles
+                .filter(function (p) { return p.profileId !== state.profileId; })
+                .map(function (p) {
+                    return '<option value="' + escapeHtml(p.profileId) + '">' + escapeHtml(p.playerName) + '</option>';
+                }).join('');
 
         el.songSheet.hidden = false;
     }
@@ -314,7 +351,7 @@
 
         // Index 0 is player 1 / MIC 1 — the person signing up always takes the first microphone.
         var singers = [state.profileId];
-        var partner = el.duetBox.hidden ? '' : el.partnerSelect.value;
+        var partner = el.partnerSelect.value;
         if (partner) singers.push(partner);
 
         el.signUpBtn.disabled = true;
@@ -391,7 +428,15 @@
             if (e.key === 'Enter') el.newProfileBtn.click();
         });
 
-        el.whoBtn.addEventListener('click', backToLogin);
+        // The pill in the header is the quickest way to "that's not me" — keep it, but the full
+        // profile view is where switching and settings live.
+        el.whoBtn.addEventListener('click', function () { switchView('me'); });
+        el.switchProfileBtn.addEventListener('click', backToLogin);
+
+        el.difficultyPicker.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-difficulty]');
+            if (btn) setDifficulty(Number(btn.dataset.difficulty));
+        });
 
         document.querySelectorAll('.tab').forEach(function (tab) {
             tab.addEventListener('click', function () { switchView(tab.dataset.view); });

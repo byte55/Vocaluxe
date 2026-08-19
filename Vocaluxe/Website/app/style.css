@@ -332,6 +332,53 @@ select:focus {
     color: var(--text-dim);
 }
 
+/* ---------------- Profil ---------------- */
+
+.me-card {
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+}
+
+.me-label {
+    font-size: .75rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+.me-name { margin-top: 4px; font-size: 1.4rem; font-weight: 700; }
+
+.segmented {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+}
+
+.seg {
+    flex: 1;
+    min-height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-dim);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+
+.seg.is-active {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    color: var(--accent-ink);
+}
+
+.hint { margin: 12px 0 24px; font-size: .85rem; color: var(--text-dim); }
+
 /* ---------------- Songs ---------------- */
 
 .search-bar { position: sticky; top: 0; padding-bottom: 10px; }
