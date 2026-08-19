@@ -110,6 +110,15 @@ maschinenspezifisch, sondern treffen jeden Linux-Build mit aktuellem ffmpeg:
 - **PitchTracker mit `g++` statt `gcc` gelinkt.** Alle Objekte sind C++, `gcc`
   zieht libstdc++ nicht mit. Die `.so` hatte ~40 ungelöste Symbole und wäre
   erst beim `dlopen` zur Laufzeit gescheitert, nicht beim Build.
+- **App-ID für das Fenster gesetzt** (`COpenGL.cs`). Wayland kennt **kein
+  Fenster-Icon-Protokoll** — eine Anwendung kann ihr Icon nicht selbst setzen.
+  Die Shell nimmt die *App-ID* des Fensters, sucht die gleichnamige
+  `.desktop`-Datei und zeigt deren `Icon=`. Ohne App-ID bleibt in der Taskleiste
+  ein graues Zahnrad. Gesetzt wird `vocaluxe`, passend zu
+  `~/.local/share/applications/vocaluxe.desktop`; die X11-Klassennamen bekommen
+  denselben Wert für den XWayland-Fall. Der Hint heißt in OpenTK
+  `WindowHintString.WaylandAppID` (großes D) und muss **vor** der
+  Fenstererstellung gesetzt sein.
 - **GLFW-Error-Callback in `COpenGL.cs`.** OpenTK macht per Default aus *jedem*
   GLFW-Fehler eine Exception. Unter Wayland fragt die Fenstererzeugung die
   Fensterposition ab, die das Protokoll Clients bewusst nicht gibt — der Start

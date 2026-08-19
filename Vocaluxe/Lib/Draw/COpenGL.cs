@@ -114,6 +114,18 @@ namespace Vocaluxe.Lib.Draw
                 CLog.Error("GLFW: {ErrorCode} - {Description}",
                     CLog.Params(errorCode, description)));
 
+            // Tell the compositor which application this window belongs to. Wayland has no window
+            // icon protocol at all: the icon comes from the .desktop file, and it is only found when
+            // the window's app id matches that file's name (vocaluxe.desktop). Without it the shell
+            // falls back to a generic placeholder in the task bar.
+            //
+            // The hints have to be set before the window exists. X11 gets the same value through its
+            // class name, so the icon also works when the game runs through XWayland.
+            const string appId = "vocaluxe";
+            GLFW.WindowHint(WindowHintString.WaylandAppID, appId);
+            GLFW.WindowHint(WindowHintString.X11ClassName, appId);
+            GLFW.WindowHint(WindowHintString.X11InstanceName, appId);
+
             _Window = new NativeWindow(settings);
             _Window.MakeCurrent();
 
