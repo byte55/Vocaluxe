@@ -19,7 +19,9 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Security;
+#if WIN
 using Microsoft.Win32;
+#endif
 using Vocaluxe.Base;
 using VocaluxeLib.Log;
 
@@ -30,6 +32,7 @@ namespace Vocaluxe
     /// </summary>
     static class CProgrammHelper
     {
+#if WIN
         private static bool _CheckUninstallKey(string name, string key)
         {
             using (RegistryKey rk = Registry.LocalMachine.OpenSubKey(key))
@@ -114,6 +117,7 @@ namespace Vocaluxe
 
         return false;
         }
+#endif
 
         private static void _EnsureDataFolderExists()
         {

@@ -429,7 +429,6 @@ namespace Vocaluxe.Base.Server
         #endregion
 
         #region songs
-        private static SSongInfo[] _SongInfoCache = null;
         private static SSongInfo _GetSongInfo(CSong song)
         {
             SSongInfo result = new SSongInfo();

@@ -388,6 +388,14 @@ namespace Vocaluxe.Base.Server
             }
         }
 
+        // One instance, not one per save: System.Text.Json caches its serialization metadata per
+        // options object, so a fresh one each time rebuilds that cache on every write.
+        private static readonly JsonSerializerOptions _SaveOptions = new JsonSerializerOptions {WriteIndented = true};
+
+        // Saves come from request threads and can overlap; two concurrent writers on the same path
+        // would interleave their bytes.
+        private static readonly object _SaveMutex = new object();
+
         private static void _Save()
         {
             try
@@ -396,8 +404,17 @@ namespace Vocaluxe.Base.Server
                 lock (_Mutex)
                     snapshot = _Requests.Select(_Copy).ToArray();
 
-                Directory.CreateDirectory(Path.GetDirectoryName(_StorageFile) ?? ".");
-                File.WriteAllText(_StorageFile, JsonSerializer.Serialize(snapshot, new JsonSerializerOptions {WriteIndented = true}));
+                string json = JsonSerializer.Serialize(snapshot, _SaveOptions);
+                lock (_SaveMutex)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(_StorageFile) ?? ".");
+                    // Write beside the target and move it into place. A plain write truncates first,
+                    // so a crash mid-write (or a hard kill) would leave a half-written queue behind
+                    // and the evening would start with an empty list.
+                    string temp = _StorageFile + ".tmp";
+                    File.WriteAllText(temp, json);
+                    File.Move(temp, _StorageFile, true);
+                }
             }
             catch (Exception e)
             {

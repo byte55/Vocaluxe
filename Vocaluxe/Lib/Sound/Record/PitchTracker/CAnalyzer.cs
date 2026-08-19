@@ -87,8 +87,9 @@ namespace Vocaluxe.Lib.Sound.Record.PitchTracker
 
         protected override void _Dispose(bool disposing)
         {
+            // Also runs from the finalizer, where a throw would kill the process.
             if (_Instance == IntPtr.Zero)
-                throw new ObjectDisposedException(GetType().Name);
+                return;
             Analyzer_Free(_Instance);
             _Instance = IntPtr.Zero;
         }

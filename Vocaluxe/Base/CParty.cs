@@ -21,6 +21,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Vocaluxe.Base.ThemeSystem;
@@ -283,10 +285,64 @@ namespace Vocaluxe.Base
             return true;
         }
 
+        // Built once and shared by every party mode: collecting the reference set walks the whole
+        // trusted-platform list and opens each assembly, which is pointless to repeat per mode.
+        private static List<MetadataReference> _References;
+
+        /// <summary>
+        ///     Where a compiled party mode is kept so the next start can skip Roslyn. Keyed by the
+        ///     sources themselves, so editing a party mode simply misses the cache.
+        /// </summary>
+        private static string _CacheFile(string key)
+        {
+            return Path.Combine(CSettings.DataFolder, "PartyModeCache", key + ".dll");
+        }
+
+        private static string _SourceKey(string[] files)
+        {
+            using (var sha = SHA256.Create())
+            {
+                var sb = new StringBuilder();
+                // The runtime version matters as much as the sources: an assembly emitted against a
+                // different framework must not be reused.
+                sb.Append(Environment.Version).Append('\n');
+                sb.Append(typeof(CParty).Assembly.ManifestModule.ModuleVersionId).Append('\n');
+                foreach (string file in files.OrderBy(f => f, StringComparer.Ordinal))
+                {
+                    sb.Append(file).Append('\n');
+                    try
+                    {
+                        sb.Append(File.ReadAllText(file)).Append('\n');
+                    }
+                    catch (Exception)
+                    {
+                        return null; // unreadable source -> no caching, the compile step will report it
+                    }
+                }
+                return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()))).Replace("-", "");
+            }
+        }
+
         private static Assembly _CompileFiles(string[] files)
         {
             if (files == null || files.Length == 0)
                 return null;
+
+            string cacheKey = _SourceKey(files);
+            if (cacheKey != null)
+            {
+                try
+                {
+                    string cached = _CacheFile(cacheKey);
+                    if (File.Exists(cached))
+                        return Assembly.Load(File.ReadAllBytes(cached));
+                }
+                catch (Exception e)
+                {
+                    // A broken cache entry must never keep a party mode from loading.
+                    CLog.Error(e, "Could not use the cached party mode; compiling from source");
+                }
+            }
 
             // Parse all party-mode source files.
             var syntaxTrees = new List<SyntaxTree>();
@@ -306,6 +362,9 @@ namespace Vocaluxe.Base
             // Reference the same assemblies the host already has (framework + VocaluxeLib + ...). Use
             // TRUSTED_PLATFORM_ASSEMBLIES so this also works for the self-contained publish, and add the
             // loaded assemblies' locations on top. Dedup by path to avoid duplicate-identity errors.
+            if (_References != null)
+                return _Emit(files, syntaxTrees, cacheKey);
+
             var refPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string tpa)
             {
@@ -328,10 +387,33 @@ namespace Vocaluxe.Base
                 catch (Exception) { /* skip unreadable reference */ }
             }
 
+            _References = references;
+            return _Emit(files, syntaxTrees, cacheKey);
+        }
+
+        /// <summary>
+        ///     Every rebuild of Vocaluxe invalidates the old entries, so without this the folder would
+        ///     just keep growing. Two modes per build, so ten files cover the last few builds.
+        /// </summary>
+        private static void _PruneCache(string folder)
+        {
+            const int keep = 10;
+            FileInfo[] entries = new DirectoryInfo(folder).GetFiles("*.dll");
+            if (entries.Length <= keep)
+                return;
+            foreach (FileInfo old in entries.OrderByDescending(f => f.LastWriteTimeUtc).Skip(keep))
+            {
+                try { old.Delete(); }
+                catch (Exception) { /* still in use or gone already - not worth reporting */ }
+            }
+        }
+
+        private static Assembly _Emit(string[] files, List<SyntaxTree> syntaxTrees, string cacheKey)
+        {
             var compilation = CSharpCompilation.Create(
                 "VocaluxePartyMode_" + _NextID,
                 syntaxTrees,
-                references,
+                _References,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: OptimizationLevel.Release));
 
             using (var ms = new MemoryStream())
@@ -343,8 +425,25 @@ namespace Vocaluxe.Base
                         CLog.Error("Error compiling party-mode source (" + CHelper.ListStrings(files) + "): " + d);
                     return null;
                 }
-                ms.Seek(0, SeekOrigin.Begin);
-                return Assembly.Load(ms.ToArray());
+                byte[] assemblyData = ms.ToArray();
+
+                if (cacheKey != null)
+                {
+                    try
+                    {
+                        string cached = _CacheFile(cacheKey);
+                        Directory.CreateDirectory(Path.GetDirectoryName(cached));
+                        File.WriteAllBytes(cached + ".tmp", assemblyData);
+                        File.Move(cached + ".tmp", cached, true);
+                        _PruneCache(Path.GetDirectoryName(cached));
+                    }
+                    catch (Exception e)
+                    {
+                        // Only costs us the shortcut on the next start.
+                        CLog.Error(e, "Could not cache the compiled party mode");
+                    }
+                }
+                return Assembly.Load(assemblyData);
             }
         }
 

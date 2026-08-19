@@ -87,7 +87,12 @@ namespace Vocaluxe.Lib.Video.Acinerella
                     return true;
                 _Free();
             }
-            catch (Exception) {}
+            catch (Exception e)
+            {
+                CLog.Error(e, "Error opening video file: " + _FileName);
+                _Instance = IntPtr.Zero;
+                return false;
+            }
             CLog.Error("Error opening video file: " + _FileName);
             _Instance = IntPtr.Zero;
             return false;
