@@ -70,21 +70,6 @@ namespace Vocaluxe.Base.Server
             }
         }
 
-        public static Guid OpenSession(string userName, string password)
-        {
-            if (!_ValidateUserAndPassword(userName, password))
-                return Guid.Empty;
-
-            Guid newId = Guid.NewGuid();
-            Guid id = _GetProfileIdFormUsername(userName);
-            EUserRoles roles = _GetUserRoles(id);
-            CSession session = new CSession(newId, id, roles);
-            //InvalidateSessions(id);
-            _ActiveSessions.Add(newId, session);
-
-            return newId;
-        }
-
         /// <summary>
         ///     Signs in to a profile. A profile without a PIN needs nothing but a tap — that low bar is
         ///     the point of the whole flow. One with a PIN needs it, and repeated wrong guesses make
@@ -156,16 +141,6 @@ namespace Vocaluxe.Base.Server
                 attempts.BlockedUntil = DateTime.Now.AddSeconds(seconds);
                 return seconds;
             }
-        }
-
-        private static bool _ValidateUserAndPassword(string userName, string password)
-        {
-            return CVocaluxeServer.ValidatePassword(_GetProfileIdFormUsername(userName), password);
-        }
-
-        private static Guid _GetProfileIdFormUsername(string username)
-        {
-            return CVocaluxeServer.GetUserIdFromUsername(username);
         }
 
         private static EUserRoles _GetUserRoles(Guid profileId)

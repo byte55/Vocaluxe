@@ -62,8 +62,6 @@ tx.exe
 /Installer/log.txt
 /Installer/setup-cache
 /Installer/Setup Files
-/WebserverInitalConfig/bin
-/PhoneGap/
 /TestResults
 /VocaluxeTests/bin
 /Output/libs

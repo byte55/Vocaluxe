@@ -205,8 +205,9 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
   Bilder — dort nahm der Server vorher *ohne jede Session* ein beliebiges Bild
   an); mit dem Entfernen der alten API sind sie ganz verschwunden. Der Grund:
   Hochgeladene Fotos landeten als Vollbild in der Diashow des Score-Screens,
-  also auf dem Beamer. Die für einen Revert kommentierten Stellen liegen in
-  `CVocaluxeServer.SendProfileData` und `CVocaluxeServer._AddAvatar`.
+  also auf dem Beamer. Ein Revert ist damit kein Auskommentieren mehr, sondern
+  eine Neuentwicklung — die annehmende Seite (`SendProfileData`, `_AddAvatar`)
+  existiert nicht mehr im Code, nur noch in der Historie.
 - **Zu zweit singen geht bei jedem Song**, nicht nur bei Duetten — Vocaluxe
   wertet dann beide auf derselben Stimme.
 - **Der Schwierigkeitsgrad** wird im Tab „Ich" pro Profil gesetzt und wirkt
@@ -222,9 +223,16 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
   `docs/web-queue.md`). Warten, bis die Auswertung erscheint.
 - **Die alte API ist entfernt.** `CWebservice` mit `/sendProfile`, `/sendPhoto`,
   `/sendKeyEvent`, den Playlist-Endpunkten und `/legacy` gibt es nicht mehr —
-  sie war ein zweiter, weiter offener Zugang zum selben Spiel. Die Dateien unter
-  `Vocaluxe/Website/` (index.html, css, img, js, locales) bleiben als Referenz
-  im Repo, werden aber nicht mehr ausgeliefert und nicht mehr mitgebaut.
+  sie war ein zweiter, weiter offener Zugang zum selben Spiel. Mit ihr fielen in
+  einem zweiten Durchgang auch die Reste: die 27 nur noch von ihr aufgerufenen
+  Methoden in `CVocaluxeServer` (Playlists, Foto-Upload, Login über Benutzername,
+  Cover als Base64), die zugehörigen DTOs in `VocaluxeStructs.cs` und die beiden
+  Projekte `PhoneGap/` (Handy-Hülle um die alte Seite) und
+  `WebserverInitalConfig/` (Windows-Werkzeug für Zertifikat, `netsh`-ACL und
+  Firewall — auf Linux ohne Funktion), letzteres auch aus `Vocaluxe.sln`. Die
+  Dateien unter `Vocaluxe/Website/` (index.html, css, img, js, locales) bleiben
+  als Referenz im Repo, werden aber nicht mehr ausgeliefert und nicht mehr
+  mitgebaut.
 - **Fernbedienung**: `POST /api/remote/key` (Tasten ins Spiel, braucht
   `UseKeyboard`, also Admin **mit PIN**), `GET /api/remote/state` liefert den
   aktuellen Screen. Damit lässt sich das Spiel vom Handy steuern, wenn niemand
