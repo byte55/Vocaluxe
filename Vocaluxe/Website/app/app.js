@@ -43,7 +43,7 @@
          'queueList', 'queueEmpty', 'queueBadge', 'clearFinishedBtn', 'searchInput', 'songCount',
          'songList', 'moreBtn', 'songSheet', 'sheetTitle', 'sheetArtist', 'sheetMeta', 'partnerBox',
          'partnerLabel', 'micHint', 'partnerSearch', 'partnerList', 'signUpBtn', 'toast', 'meName',
-         'difficultyPicker', 'switchProfileBtn', 'profileSearch', 'newAvatarBox', 'newAvatarGrid',
+         'difficultyPicker', 'switchProfileBtn', 'profileSearch', 'abortBtn', 'newAvatarBox', 'newAvatarGrid',
          'meAvatarGrid', 'meAvatar', 'pinStatus', 'currentPinInput', 'newPinInput', 'savePinBtn',
          'clearPinBtn', 'pinSheet', 'pinSheetName', 'pinSheetInput', 'pinSubmitBtn'].forEach(function (id) {
             el[id.replace(/-([a-z])/g, function (m, c) { return c.toUpperCase(); })] = $(id);
@@ -713,6 +713,12 @@
 
         el.startNextBtn.addEventListener('click', function () {
             startRequest(el.startNextBtn.dataset.id);
+        });
+
+        el.abortBtn.addEventListener('click', function () {
+            api('POST', '/api/queue/abort-current')
+                .then(function () { toast('Song abgebrochen.'); refreshQueue(); })
+                .catch(function (e) { toast(e.message, true); });
         });
 
         el.clearFinishedBtn.addEventListener('click', function () {

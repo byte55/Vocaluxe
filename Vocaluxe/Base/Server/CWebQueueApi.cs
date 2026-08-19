@@ -52,10 +52,36 @@ namespace Vocaluxe.Base.Server
 
         public static void MapEndpoints(WebApplication app)
         {
+            // Surface endpoint exceptions in the game log. ASP.NET's own logging is disabled
+            // (ClearProviders), so without this an unhandled handler exception is just a silent 500.
+            app.Use(async (HttpContext ctx, Func<Task> next) =>
+            {
+                try
+                {
+                    await next();
+                }
+                catch (TimeoutException)
+                {
+                    // The game loop did not pick the task up in time (a stalled render loop does
+                    // this). Report it as "temporarily unavailable" instead of hanging the client,
+                    // and keep it out of the error log -- it is a state, not a bug.
+                    CLog.Information("Webserver: main thread timeout on " + ctx.Request.Method + " " + ctx.Request.Path);
+                    if (!ctx.Response.HasStarted)
+                        ctx.Response.StatusCode = 503;
+                }
+                catch (Exception e)
+                {
+                    CLog.Error(e, "Webserver request failed: " + ctx.Request.Method + " " + ctx.Request.Path);
+                    if (!ctx.Response.HasStarted)
+                        ctx.Response.StatusCode = 500;
+                }
+            });
+
             _MapProfiles(app);
             _MapSongs(app);
             _MapQueue(app);
             _MapControl(app);
+            _MapRemote(app);
             _MapEvents(app);
         }
 
@@ -384,6 +410,47 @@ namespace Vocaluxe.Base.Server
         ///     Returns an error result when this session must not start <paramref name="requestId" />,
         ///     or null when it may.
         /// </summary>
+        #region remote control
+
+        private static void _MapRemote(WebApplication app)
+        {
+            // Taken over from the old /sendKeyEvent so the host keeps a way to drive the game from a
+            // phone when nobody is at the keyboard. Same right as before (UseKeyboard), which admins
+            // have; unlike the old endpoint it is not reachable without a claimed profile.
+            app.MapPost("/api/remote/key", async (HttpContext ctx) =>
+            {
+                if (!_HasRight(ctx, EUserRights.UseKeyboard))
+                    return _Error(403, "Dafür fehlen dir die Rechte.");
+
+                CKeyBody body = await _ReadBody<CKeyBody>(ctx);
+                if (body == null || string.IsNullOrEmpty(body.Key))
+                    return _Error(400, "key fehlt");
+
+                bool ok = CVocaluxeServer.DoTask(CVocaluxeServer.SendKeyEvent, body.Key);
+                return ok ? _Json(new {sent = body.Key}) : _Error(400, "Unbekannte Taste: " + body.Key);
+            });
+
+            app.MapGet("/api/remote/state", (HttpContext ctx) =>
+            {
+                if (!_HasRight(ctx, EUserRights.UseKeyboard))
+                    return _Error(403, "Dafür fehlen dir die Rechte.");
+                return _Json(new {screen = CVocaluxeServer.DoTask(CVocaluxeServer.GetCurrentScreenName)});
+            });
+
+            // "The singer gave up" / "nobody came to the microphone".
+            app.MapPost("/api/queue/abort-current", (HttpContext ctx) =>
+            {
+                if (!_HasRight(ctx, EUserRights.ReorderPlaylists))
+                    return _Error(403, "Nur wer die Warteliste verwaltet, kann einen Song abbrechen.");
+
+                return CVocaluxeServer.DoTask(CVocaluxeServer.AbortCurrentSong)
+                    ? _Json(new {aborted = true})
+                    : _Error(409, "Gerade läuft kein Song.");
+            });
+        }
+
+        #endregion
+
         private static IResult _CheckMayStart(HttpContext ctx, int requestId)
         {
             Guid session = _GetSession(ctx);
@@ -623,6 +690,11 @@ namespace Vocaluxe.Base.Server
         private class CDifficultyBody
         {
             public int Difficulty { get; set; }
+        }
+
+        private class CKeyBody
+        {
+            public string Key { get; set; }
         }
 
         #endregion

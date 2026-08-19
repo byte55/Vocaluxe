@@ -84,13 +84,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Website\locales\*.json" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Website\index.html" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Website\css\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Website\img\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Website\js\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <!-- New event frontend (song requests / queue). Served as the site root; the old jQuery Mobile
-         page stays reachable under /legacy. -->
+    <!-- The event frontend (song requests / queue), served as the site root.
+         Website/index.html, css/, img/, js/ and locales/ are the old jQuery Mobile page. It is no
+         longer served or built, since the API it spoke was removed. Kept in the repository for
+         reference only. -->
     <Content Include="Website\app\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

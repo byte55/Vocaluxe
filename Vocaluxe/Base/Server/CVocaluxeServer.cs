@@ -132,7 +132,10 @@ namespace Vocaluxe.Base.Server
                 else
                     CLog.Error("Web frontend not found at " + webRoot + "; only the legacy page will be available");
 
-                CWebservice.MapEndpoints(_App);
+                // The old WCF-shaped API is gone: it was a second, wider door into the same game
+                // (profile edits without a session, photo upload straight onto the score screen,
+                // key events without a claimed profile) and nothing uses it any more.
+                // Vocaluxe/Website/ is kept as a reference of what the old page looked like.
                 CWebQueueApi.MapEndpoints(_App);
                 CSongRequests.Load();
 
@@ -898,6 +901,36 @@ namespace Vocaluxe.Base.Server
             CLog.Information("Profile " + profile.PlayerName + ": difficulty set to " + (EGameDifficulty)difficulty);
             return true;
         }
+
+        #region remote control
+
+        /// <summary>Name of the screen currently on display, e.g. "CScreenSing".</summary>
+        public static string GetCurrentScreenName()
+        {
+            return CGraphics.CurrentScreen == null ? "" : CGraphics.CurrentScreen.GetType().Name;
+        }
+
+        /// <summary>
+        ///     Aborts the running song and returns to the song list.
+        ///
+        ///     Not done by faking key presses: Escape merely toggles the pause menu, so it would take
+        ///     Escape *and* Enter, one frame apart, to actually stop. Fading out directly runs the sing
+        ///     screen's OnClose, which closes the streams and stops the recording just the same.
+        /// </summary>
+        public static bool AbortCurrentSong()
+        {
+            if (CGraphics.CurrentScreen != CGraphics.GetScreen(EScreen.Sing))
+                return false;
+
+            // The score screen is skipped, so close the queue entry here — otherwise it would sit on
+            // "playing" until something else starts.
+            CSongRequests.FinishPlaying();
+            CGraphics.FadeTo(EScreen.Song);
+            CLog.Information("Song aborted from the web remote");
+            return true;
+        }
+
+        #endregion
 
         #region PIN
 
