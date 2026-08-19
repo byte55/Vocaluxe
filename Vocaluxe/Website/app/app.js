@@ -56,6 +56,10 @@
             return (isJson ? res.json().catch(function () { return null; }) : res.text())
                 .then(function (data) {
                     if (!res.ok) {
+                        // The session expired (or the game restarted). Don't leave the guest staring
+                        // at an error they cannot act on — send them back to the profile list.
+                        if (res.status === 401 && state.sessionId) backToLogin();
+
                         var msg = (data && data.error) ? data.error : ('Fehler ' + res.status);
                         var err = new Error(msg);
                         err.status = res.status;
