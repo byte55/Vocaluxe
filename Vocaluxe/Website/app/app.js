@@ -338,17 +338,33 @@
             document.querySelectorAll('.admin-only').forEach(function (node) {
                 node.hidden = !state.isAdmin;
             });
-            renderNowNext(s.playing, s.next);
+            // Admin state changes what may be started, so re-render with the entries we have.
+            renderAll();
         }).catch(function () { /* Status ist unkritisch — Warteliste rendert trotzdem */ });
     }
 
     function refreshQueue() {
         return api('GET', '/api/queue').then(function (data) {
             state.entries = (data && data.entries) || [];
-            renderQueue();
+            renderAll();
         }).catch(function (e) {
             toast(e.message, true);
         });
+    }
+
+    function isMine(entry) {
+        return (entry.singerProfileIds || []).indexOf(state.profileId) >= 0
+            || entry.createdBy === state.profileId;
+    }
+
+    /// Mirrors the server rule: your own entry, and only when it is the one actually next in line.
+    /// Whoever may reorder the queue may start anything.
+    function mayStart(entry) {
+        if (state.isAdmin) return true;
+        if (!isMine(entry)) return false;
+
+        var next = state.entries.filter(function (e) { return e.state === 'Waiting'; })[0];
+        return !!next && next.requestId === entry.requestId;
     }
 
     function singerText(entry) {
@@ -374,11 +390,21 @@
             el.upNext.hidden = false;
             el.nextSong.textContent = songText(next);
             el.nextSingers.textContent = singerText(next);
-            el.startNextBtn.hidden = false;
+            el.startNextBtn.hidden = !mayStart(next);
             el.startNextBtn.dataset.id = next.requestId;
         } else {
             el.upNext.hidden = true;
         }
+    }
+
+    /// Renders queue and the now/next boxes from one source. Deriving both from state.entries
+    /// avoids a race: mayStart() needs the entries, but the now/next box used to be rendered from
+    /// /api/status, which can arrive first and would then hide the start button for good.
+    function renderAll() {
+        renderQueue();
+        renderNowNext(
+            state.entries.filter(function (e) { return e.state === 'Playing'; })[0] || null,
+            state.entries.filter(function (e) { return e.state === 'Waiting'; })[0] || null);
     }
 
     function renderQueue() {
@@ -391,8 +417,7 @@
 
         var position = 0;
         el.queueList.innerHTML = visible.map(function (entry) {
-            var mine = (entry.singerProfileIds || []).indexOf(state.profileId) >= 0
-                || entry.createdBy === state.profileId;
+            var mine = isMine(entry);
             var isPlaying = entry.state === 'Playing';
             if (!isPlaying) position++;
 
@@ -400,7 +425,7 @@
             if (mine || state.isAdmin) {
                 actions += '<button class="icon-btn danger" data-remove="' + entry.requestId + '" title="Austragen">&times;</button>';
             }
-            if (!isPlaying) {
+            if (!isPlaying && mayStart(entry)) {
                 actions += '<button class="icon-btn" data-start="' + entry.requestId + '" title="Jetzt starten">&#9654;</button>';
             }
 
@@ -542,8 +567,7 @@
             try {
                 var data = JSON.parse(event.data);
                 state.entries = data.entries || [];
-                renderQueue();
-                renderNowNext(data.playing, data.next);
+                renderAll();
             } catch (e) { /* kaputter Frame — beim nächsten Tick wieder gut */ }
         };
 

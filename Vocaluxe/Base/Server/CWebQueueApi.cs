@@ -355,30 +355,56 @@ namespace Vocaluxe.Base.Server
 
             // The half-automatic start: the next act walks up to the microphone and confirms.
             //
-            // Any signed-in guest may do this, on purpose. Starting is not an administrative act
-            // here, it *is* the confirmation step the whole flow is built around — the singer is
-            // standing at the mic and taps "start". Requiring a right would mean the host has to
-            // hand out roles before anyone can sing, and Vocaluxe gives guests EUserRights.None by
-            // default, so nothing would ever start. Rearranging or removing other people's entries
-            // stays restricted.
+            // Starting is not an administrative act here, it *is* that confirmation — so no special
+            // right is needed. But it takes two conditions, and both matter: the entry has to be
+            // yours (otherwise you start other people's songs while they are still at the buffet),
+            // and it has to be the one that is actually next (otherwise you jump the queue with your
+            // own entry from position five). Whoever may reorder the queue may ignore both, because
+            // somebody has to be able to skip an act that never shows up.
             app.MapPost("/api/queue/start-next", (HttpContext ctx) =>
             {
-                if (_GetSession(ctx) == Guid.Empty)
-                    return _Error(401, "Pick a profile first");
-
                 CSongRequest next = CSongRequests.GetNextWaiting();
                 if (next == null)
-                    return _Error(409, "Nobody is waiting");
+                    return _Error(409, "Es wartet gerade niemand.");
 
-                return _StartRequest(next.RequestId);
+                IResult denied = _CheckMayStart(ctx, next.RequestId);
+                return denied ?? _StartRequest(next.RequestId);
             });
 
             app.MapPost("/api/queue/{id:int}/start", (HttpContext ctx, int id) =>
             {
-                if (_GetSession(ctx) == Guid.Empty)
-                    return _Error(401, "Pick a profile first");
-                return _StartRequest(id);
+                IResult denied = _CheckMayStart(ctx, id);
+                return denied ?? _StartRequest(id);
             });
+        }
+
+        /// <summary>
+        ///     Returns an error result when this session must not start <paramref name="requestId" />,
+        ///     or null when it may.
+        /// </summary>
+        private static IResult _CheckMayStart(HttpContext ctx, int requestId)
+        {
+            Guid session = _GetSession(ctx);
+            Guid ownProfile = CSessionControl.GetUserIdFromSession(session);
+            if (ownProfile == Guid.Empty)
+                return _Error(401, "Wähle zuerst dein Profil.");
+
+            if (CSessionControl.RequestRight(session, EUserRights.ReorderPlaylists))
+                return null;
+
+            CSongRequest request = CSongRequests.GetById(requestId);
+            if (request == null)
+                return _Error(404, "Diesen Eintrag gibt es nicht mehr.");
+
+            bool mine = request.CreatedBy == ownProfile || request.SingerProfileIds.Contains(ownProfile);
+            if (!mine)
+                return _Error(403, "Das ist nicht dein Song — starten darf ihn, wer ihn eingetragen hat.");
+
+            CSongRequest next = CSongRequests.GetNextWaiting();
+            if (next == null || next.RequestId != requestId)
+                return _Error(409, "Du bist noch nicht dran. Warte, bis dein Song oben steht.");
+
+            return null;
         }
 
         private static IResult _StartRequest(int requestId)
