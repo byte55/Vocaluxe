@@ -87,8 +87,9 @@ Kein SDL2 — das taucht nur noch in Kommentaren auf.
 
 ## Lokale Fixes und wo es weh tut
 
-Drei Fixes liegen als Commits auf dem Branch; sie sind nicht
-maschinenspezifisch, sondern treffen jeden Linux-Build mit aktuellem ffmpeg:
+Diese Fixes liegen als Commits auf dem Branch. Keiner davon ist
+maschinenspezifisch: die ersten drei treffen jeden Linux-Build mit aktuellem
+ffmpeg, die letzten beiden jeden unter Wayland.
 
 - **Acinerella auf ffmpeg 6+ portiert.** Die `int64_t`-Channel-Layout-Bitmaske
   ist in ffmpeg 5.1/6.0 der `AVChannelLayout`-Struct gewichen. Ubuntu 26.04
@@ -197,16 +198,24 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
   über mehrere Events an; gelegentlich aufräumen.
 - **Profilbilder nur aus dem mitgelieferten Bestand.** Zur Auswahl stehen die 23
   Avatare aus `Profiles/Vocaluxe Avatars 2024 (Official)/`, wählbar beim Anlegen
-  und im Tab „Ich". **Hochladen ist bewusst abgeschaltet** — sowohl `/sendPhoto`
-  (403) als auch der Bild-Teil von `/sendProfile`, der vorher *ohne jede Session*
-  ein beliebiges Bild annahm. Hochgeladene Fotos landeten sonst als Vollbild in
-  der Diashow des Score-Screens, also auf dem Beamer. Rückgängig zu machen an
-  den beiden kommentierten Stellen in `CWebservice.cs` und
-  `CVocaluxeServer.SendProfileData`.
+  und im Tab „Ich". **Es gibt keinen Upload-Weg** — die `/api`-Oberfläche bietet
+  keinen an. Historisch: Zuerst wurden die beiden alten Wege abgeschaltet
+  (`/sendPhoto` antwortete mit 403, `/sendProfile` ignorierte mitgeschickte
+  Bilder — dort nahm der Server vorher *ohne jede Session* ein beliebiges Bild
+  an); mit dem Entfernen der alten API sind sie ganz verschwunden. Der Grund:
+  Hochgeladene Fotos landeten als Vollbild in der Diashow des Score-Screens,
+  also auf dem Beamer. Die für einen Revert kommentierten Stellen liegen in
+  `CVocaluxeServer.SendProfileData` und `CVocaluxeServer._AddAvatar`.
 - **Zu zweit singen geht bei jedem Song**, nicht nur bei Duetten — Vocaluxe
   wertet dann beide auf derselben Stimme.
 - **Der Schwierigkeitsgrad** wird im Tab „Ich" pro Profil gesetzt und wirkt
   sofort, auch im laufenden Song.
+- **Starten darf nur, wer dran ist.** Zwei Bedingungen, beide serverseitig
+  geprüft: Der Eintrag muss **dir gehören** (du hast ihn erstellt oder stehst als
+  Sänger drin) *und* er muss **oben in der Warteliste** stehen. Sonst kommt „Das
+  ist nicht dein Song…" bzw. „Du bist noch nicht dran…". Wer die Warteliste
+  verwalten darf (Admin **mit PIN**), umgeht beides — jemand muss einen Sänger
+  überspringen können, der nicht auftaucht.
 - **Ein Song lässt sich nicht starten, solange einer läuft.** Das ist kein
   Komfortverzicht, sondern verhindert einen Absturz (Details in
   `docs/web-queue.md`). Warten, bis die Auswertung erscheint.
@@ -228,6 +237,32 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
   der Stream auf `ApplicationStopping` und der Shutdown-Timeout steht auf 2 s.
   Ohne beides hing das Beenden über das Hauptmenü 30 Sekunden, sobald auch nur
   ein Handy die Seite offen hatte.
+
+### Am Bildschirm: wer als Nächstes dran ist
+
+Nach jedem Song kündigt der **Score-Screen** den nächsten Wartenden an — Song,
+Sänger und ein Countdown über 30 Sekunden. Läuft der ab, **blinkt** die Zeile
+nur; es startet nichts von selbst, denn ob jemand am Mikro steht, kann nur ein
+Mensch beurteilen.
+
+| Taste | Wirkung |
+|---|---|
+| Enter | startet den angezeigten Eintrag mit seinen Sängern |
+| Hoch / Runter | blättert durch die Wartenden, Countdown beginnt neu |
+| Escape / Backspace | verlässt den Screen zur Songauswahl |
+| Links / Rechts | wechselt die Runde (unverändert) |
+
+Das Blättern ändert die Reihenfolge **nicht**: Wer übersprungen wurde, steht nach
+dem nächsten Song wieder oben. Ist die Warteliste leer, wird nichts angezeigt und
+Enter verlässt den Screen wie früher.
+
+Gebaut in `Vocaluxe/Screens/CScreenScore.cs`; die Textelemente `TextNextUp*`
+stehen im Theme (`ScreenScore.xml`, ScreenVersion 5).
+
+**Ein Song zählt erst ab 30 Sekunden als gesungen.** Wird früher abgebrochen,
+geht der Eintrag zurück in die Warteliste — ein Fehlstart soll niemanden seinen
+Platz kosten. Wer dagegen das ewige Outro mit Escape abkürzt, hat seinen Song
+gesungen und der Eintrag ist erledigt.
 
 ### PIN: ein Profil für sich beanspruchen
 
@@ -375,7 +410,7 @@ Die Kanalnummer zählt **pro Gerät**, nicht durchlaufend über alle Geräte —
 MIC 2 ist also Kanal 2, nicht Kanal 4. Kanal 1 ist links, Kanal 2 ist rechts,
 mehr hat der PCM2902 nicht.
 
-Die Automatik trifft diesen Fall meist von selbst: `CConfig._CheckMics` sucht
+Die Automatik trifft diesen Fall meist von selbst: `CConfig.AutoAssignMics` sucht
 ein Aufnahmegerät, dessen Name auf `Usb|Wireless` passt, und legt bei
 mindestens zwei Kanälen Spieler 1 auf Kanal 1 und Spieler 2 auf Kanal 2
 (`Vocaluxe/Base/CConfig.cs:668`).

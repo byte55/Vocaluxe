@@ -37,9 +37,8 @@ namespace Vocaluxe.Base.Server
     /// <summary>
     ///     The event API used by the new web frontend: pick a profile, find a song, get in line.
     ///
-    ///     Kept separate from <see cref="CWebservice" /> on purpose. That one mirrors the old WCF
-    ///     contract 1:1 (everything is GET, DataContractJsonSerializer, quirky shapes) and the old
-    ///     website depends on it. This one uses proper verbs and System.Text.Json, and — importantly
+    ///     Grew up next to the old WCF-shaped API (CWebservice), which is why it is a separate class;
+    ///     that one has since been removed. Uses proper verbs and System.Text.Json, and — importantly
     ///     — only touches the main thread where it truly has to, so browsing and signing up survive a
     ///     stalled render loop.
     /// </summary>
@@ -107,8 +106,8 @@ namespace Vocaluxe.Base.Server
                 return _Json(new {profileId = id.ToString(), playerName = body.Name.Trim(), sessionId = signIn.SessionId.ToString()});
             });
 
-            // Tap-to-identify. Only works for profiles without a password; one with a password still
-            // has to go through the old /login endpoint.
+            // Tap-to-identify. A profile without a PIN needs nothing but the tap; one with a PIN
+            // sends it along in the body of this same request.
             app.MapPost("/api/session", async (HttpContext ctx) =>
             {
                 CSessionBody body = await _ReadBody<CSessionBody>(ctx);
@@ -406,10 +405,6 @@ namespace Vocaluxe.Base.Server
             });
         }
 
-        /// <summary>
-        ///     Returns an error result when this session must not start <paramref name="requestId" />,
-        ///     or null when it may.
-        /// </summary>
         #region remote control
 
         private static void _MapRemote(WebApplication app)
@@ -451,6 +446,10 @@ namespace Vocaluxe.Base.Server
 
         #endregion
 
+        /// <summary>
+        ///     Returns an error result when this session must not start <paramref name="requestId" />,
+        ///     or null when it may.
+        /// </summary>
         private static IResult _CheckMayStart(HttpContext ctx, int requestId)
         {
             Guid session = _GetSession(ctx);

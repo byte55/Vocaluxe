@@ -119,9 +119,9 @@ namespace Vocaluxe.Base.Server
                 builder.WebHost.ConfigureKestrel(options => options.AllowSynchronousIO = true);
                 _App = builder.Build();
 
-                // Serve the new frontend straight from Kestrel. The old per-directory handlers in
-                // CWebservice route every file through DoTask and therefore through the render loop,
-                // which is both pointless for static bytes and fragile when the loop stalls.
+                // Serve the frontend straight from Kestrel. The per-directory handlers the old API
+                // used routed every file through DoTask and therefore through the render loop, which
+                // is both pointless for static bytes and fragile when the loop stalls.
                 string webRoot = Path.Combine(CSettings.ProgramFolder, "Website", "app");
                 if (Directory.Exists(webRoot))
                 {
@@ -130,7 +130,7 @@ namespace Vocaluxe.Base.Server
                     _App.UseStaticFiles(new StaticFileOptions {FileProvider = fileProvider, RequestPath = ""});
                 }
                 else
-                    CLog.Error("Web frontend not found at " + webRoot + "; only the legacy page will be available");
+                    CLog.Error("Web frontend not found at " + webRoot + "; the server will answer the API but serve no page");
 
                 // The old WCF-shaped API is gone: it was a second, wider door into the same game
                 // (profile edits without a session, photo upload straight onto the score screen,
