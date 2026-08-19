@@ -234,6 +234,16 @@ namespace Vocaluxe.Base.Server
 
         /// <summary>0 = easy, 1 = normal, 2 = hard (<see cref="VocaluxeLib.EGameDifficulty" />).</summary>
         public int Difficulty { get; set; }
+
+        /// <summary>-1 when the profile has no avatar.</summary>
+        public int AvatarId { get; set; }
+    }
+
+    /// <summary>One of the avatars shipped with Vocaluxe.</summary>
+    public class SAvatarListEntry
+    {
+        public int AvatarId { get; set; }
+        public string Name { get; set; }
     }
 
     #endregion

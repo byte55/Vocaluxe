@@ -16,7 +16,9 @@
 #endregion
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -25,6 +27,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using VocaluxeLib;
 using VocaluxeLib.Log;
+using SkiaSharp;
 using VocaluxeLib.Profile;
 
 namespace Vocaluxe.Base.Server
@@ -60,19 +63,7 @@ namespace Vocaluxe.Base.Server
         {
             // Deliberately open: the list of names is what you tap to identify yourself. It exposes
             // display names on a LAN party network, nothing more.
-            app.MapGet("/api/profiles", () =>
-            {
-                SProfileData[] profiles = CVocaluxeServer.DoTask(CVocaluxeServer.GetProfileList);
-                SProfileListEntry[] result = profiles.Select(p => new SProfileListEntry
-                    {
-                        ProfileId = p.ProfileId.ToString(),
-                        PlayerName = p.PlayerName,
-                        IsGuest = p.Type == 0,
-                        NeedsPassword = !string.IsNullOrEmpty(p.Password),
-                        Difficulty = p.Difficulty
-                    }).ToArray();
-                return _Json(result);
-            });
+            app.MapGet("/api/profiles", () => _Json(CVocaluxeServer.DoTask(CVocaluxeServer.GetProfileListForWeb)));
 
             app.MapPost("/api/profiles", async (HttpContext ctx) =>
             {
@@ -80,7 +71,7 @@ namespace Vocaluxe.Base.Server
                 if (body == null || string.IsNullOrWhiteSpace(body.Name))
                     return _Error(400, "A name is required");
 
-                Guid id = CVocaluxeServer.DoTask(CVocaluxeServer.CreateGuestProfile, body.Name);
+                Guid id = CVocaluxeServer.DoTask(CVocaluxeServer.CreateGuestProfile, body.Name, body.AvatarId);
                 if (id == Guid.Empty)
                     return _Error(500, "Could not create the profile");
 
@@ -118,8 +109,43 @@ namespace Vocaluxe.Base.Server
                         profileId = profileId.ToString(),
                         isAdmin,
                         playerName = me == null ? "" : me.PlayerName,
-                        difficulty = me == null ? 1 : me.Difficulty
+                        difficulty = me == null ? 1 : me.Difficulty,
+                        avatarId = me == null ? -1 : me.AvatarId
                     });
+            });
+
+            // Only the bundled avatars are on offer — there is no upload path in this API on
+            // purpose, so nothing unvetted can end up on a profile or on the beamer.
+            app.MapGet("/api/avatars", () => _Json(CVocaluxeServer.DoTask(CVocaluxeServer.GetAvatarList)));
+
+            app.MapGet("/api/avatars/{id:int}/image", (HttpContext ctx, int id) =>
+            {
+                string path = CVocaluxeServer.DoTask(CVocaluxeServer.GetAvatarFilePath, id);
+                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                    return Results.NotFound();
+
+                byte[] png = _AvatarThumbnail(id, path);
+                if (png == null)
+                    return Results.NotFound();
+
+                // The bundled avatars never change while the game runs, and a phone should fetch
+                // each one once even when the queue screen is reopened all evening.
+                ctx.Response.Headers["Cache-Control"] = "public, max-age=86400";
+                return Results.Bytes(png, "image/webp");
+            });
+
+            app.MapPost("/api/me/avatar", async (HttpContext ctx) =>
+            {
+                Guid profileId = CSessionControl.GetUserIdFromSession(_GetSession(ctx));
+                if (profileId == Guid.Empty)
+                    return _Error(401, "Pick a profile first");
+
+                CAvatarBody body = await _ReadBody<CAvatarBody>(ctx);
+                if (body == null)
+                    return _Error(400, "avatarId is required");
+
+                bool ok = CVocaluxeServer.DoTask(CVocaluxeServer.SetProfileAvatar, profileId, body.AvatarId);
+                return ok ? _Json(new {avatarId = body.AvatarId}) : _Error(404, "Diesen Avatar gibt es nicht.");
             });
 
             // Difficulty is a property of the profile, not of a single request, so it lives here
@@ -420,6 +446,50 @@ namespace Vocaluxe.Base.Server
             }
         }
 
+        // Rendered thumbnails, kept in memory. The source files are ~60 KB each and there are two
+        // dozen of them; sending the originals to every phone would be several megabytes for
+        // pictures displayed at thumb size.
+        private static readonly ConcurrentDictionary<int, byte[]> _AvatarCache = new ConcurrentDictionary<int, byte[]>();
+        private const int _AvatarSize = 192;
+
+        private static byte[] _AvatarThumbnail(int avatarId, string path)
+        {
+            byte[] cached;
+            if (_AvatarCache.TryGetValue(avatarId, out cached))
+                return cached;
+
+            try
+            {
+                using (SKBitmap source = SKBitmap.Decode(path))
+                {
+                    if (source == null)
+                        return null;
+
+                    int size = Math.Min(_AvatarSize, Math.Max(source.Width, source.Height));
+                    float scale = (float)size / Math.Max(source.Width, source.Height);
+                    var info = new SKImageInfo(Math.Max(1, (int)(source.Width * scale)),
+                                               Math.Max(1, (int)(source.Height * scale)));
+
+                    using (SKBitmap scaled = source.Resize(info, SKSamplingOptions.Default))
+                    using (SKImage image = SKImage.FromBitmap(scaled ?? source))
+                    // WebP rather than PNG: these are photographic portraits, which PNG stores badly
+                    // (~28 KB each, ~660 KB for the whole gallery on a phone). WebP keeps the alpha
+                    // channel some of the avatars use and is a fraction of the size.
+                    using (SKData data = image.Encode(SKEncodedImageFormat.Webp, 82))
+                    {
+                        byte[] bytes = data.ToArray();
+                        _AvatarCache[avatarId] = bytes;
+                        return bytes;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                CLog.Error(e, "Could not render avatar " + avatarId);
+                return null;
+            }
+        }
+
         private static IResult _Json(object payload)
         {
             return Results.Json(payload, _JsonOptions);
@@ -437,6 +507,12 @@ namespace Vocaluxe.Base.Server
         private class CCreateProfileBody
         {
             public string Name { get; set; }
+            public int AvatarId { get; set; }
+        }
+
+        private class CAvatarBody
+        {
+            public int AvatarId { get; set; }
         }
 
         private class CSessionBody

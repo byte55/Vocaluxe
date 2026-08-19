@@ -117,8 +117,10 @@ namespace Vocaluxe.Base.Server
             // --- photo ---
             app.MapPost("/sendPhoto", (HttpContext ctx) =>
             {
-                if (_CheckRight(ctx, EUserRights.UploadPhotos))
-                    CVocaluxeServer.DoTask(CVocaluxeServer.SendPhoto, _ReadBody<SPhotoData>(ctx));
+                // Disabled: uploaded photos are shown full-screen behind the score screen, and nobody
+                // reviews them before they land there. Guests pick a bundled avatar instead
+                // (GET /api/avatars). Re-enable by restoring the CheckRight/SendPhoto call below.
+                _Forbid(ctx, "Photo upload is disabled on this installation");
                 return _Empty();
             });
 

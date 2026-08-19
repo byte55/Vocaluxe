@@ -130,8 +130,79 @@ button, input, select {
     cursor: pointer;
 }
 
+.profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .profile-btn:active { transform: scale(.97); }
 .profile-btn .locked { display: block; font-size: .8rem; color: var(--text-dim); font-weight: 400; }
+.profile-text { min-width: 0; }
+
+.profile-avatar {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bg-raised-2);
+}
+
+/* ---------------- Avatar-Auswahl ---------------- */
+
+.avatar-box { margin-top: 18px; }
+
+.avatar-box-label {
+    margin-bottom: 8px;
+    font-size: .75rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+.avatar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.avatar {
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    cursor: pointer;
+    overflow: hidden;
+    aspect-ratio: 1;
+}
+
+.avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatar.is-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(181, 123, 255, .25);
+}
+
+.avatar:active { transform: scale(.96); }
+
+.me-card { display: flex; align-items: center; gap: 14px; }
+
+.me-avatar {
+    flex: none;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bg-raised-2);
+}
 
 .new-profile {
     display: flex;

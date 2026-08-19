@@ -452,17 +452,13 @@ namespace Vocaluxe.Base.Server
                     };
             }
 
-            if (profile.Avatar != null)
-                newProfile.Avatar = _AddAvatar(profile.Avatar);
-            else if (newProfile.Avatar == null || newProfile.Avatar.ID == -1)
-            {
+            // Uploaded pictures are no longer accepted. Profiles choose from the avatars that ship
+            // with Vocaluxe (GET /api/avatars); an uploaded one would be shown on the profile and,
+            // through the score screen slideshow, on the beamer -- with nobody having seen it first.
+            // This endpoint accepted a picture from anyone without a session as long as ProfileId was
+            // empty, so it was the widest hole of the two.
+            if (newProfile.Avatar == null || newProfile.Avatar.ID == -1)
                 newProfile.Avatar = CProfiles.GetAvatars().First();
-
-                /*CAvatar avatar = new CAvatar(-1);
-                avatar.LoadFromFile(Path.Combine("Profiles", "Avatar_f.png"));
-                CProfiles.AddAvatar(avatar);
-                newProfile.Avatar = avatar;*/
-            }
 
             if (!string.IsNullOrEmpty(profile.PlayerName))
                 newProfile.PlayerName = profile.PlayerName;
@@ -542,6 +538,10 @@ namespace Vocaluxe.Base.Server
             return profileData;
         }
 
+        /// <summary>
+        ///     Currently unused: accepting uploaded avatars was removed (see SendProfileData). Kept so
+        ///     the change is a one-line revert if an installation ever wants uploads back.
+        /// </summary>
         private static CAvatar _AddAvatar(CBase64Image avatarData)
         {
             try
@@ -821,7 +821,7 @@ namespace Vocaluxe.Base.Server
         }
 
         /// <summary>Creates a passwordless guest profile so a visitor can sign up without setup.</summary>
-        public static Guid CreateGuestProfile(string playerName)
+        public static Guid CreateGuestProfile(string playerName, int avatarId)
         {
             if (string.IsNullOrWhiteSpace(playerName))
                 return Guid.Empty;
@@ -836,9 +836,14 @@ namespace Vocaluxe.Base.Server
                     Difficulty = EGameDifficulty.TR_CONFIG_NORMAL
                 };
 
-            CAvatar avatar = CProfiles.GetAvatars().FirstOrDefault();
-            if (avatar != null)
-                profile.Avatar = avatar;
+            // Take the picked avatar; fall back to the first one so a profile is never left without
+            // a picture (CProfile.AvatarFileName dereferences it when saving).
+            IEnumerable<CAvatar> avatars = CProfiles.GetAvatars();
+            if (avatars != null)
+            {
+                CAvatar[] all = avatars.ToArray();
+                profile.Avatar = all.FirstOrDefault(a => a.ID == avatarId) ?? all.FirstOrDefault();
+            }
 
             CProfiles.AddProfile(profile);
             CProfiles.Update();
@@ -887,6 +892,71 @@ namespace Vocaluxe.Base.Server
             return true;
         }
 
+        #region avatars
+
+        /// <summary>
+        ///     The avatars shipped with Vocaluxe. Deliberately the only source the web UI offers:
+        ///     guests pick from these instead of uploading their own, so nothing ends up on the
+        ///     karaoke box (or on the beamer) that nobody vetted.
+        /// </summary>
+        public static SAvatarListEntry[] GetAvatarList()
+        {
+            IEnumerable<CAvatar> avatars = CProfiles.GetAvatars();
+            if (avatars == null)
+                return new SAvatarListEntry[0];
+
+            return avatars.Select(a => new SAvatarListEntry
+                {
+                    AvatarId = a.ID,
+                    Name = a.GetDisplayName()
+                }).OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        /// <summary>File behind an avatar id, or null. The client never names a path itself.</summary>
+        public static string GetAvatarFilePath(int avatarId)
+        {
+            IEnumerable<CAvatar> avatars = CProfiles.GetAvatars();
+            if (avatars == null)
+                return null;
+
+            CAvatar avatar = avatars.FirstOrDefault(a => a.ID == avatarId);
+            return avatar == null ? null : avatar.FileName;
+        }
+
+        public static bool SetProfileAvatar(Guid profileId, int avatarId)
+        {
+            if (!CProfiles.IsProfileIDValid(profileId) || !CProfiles.IsAvatarIDValid(avatarId))
+                return false;
+
+            CProfiles.SetAvatar(profileId, avatarId);
+            CProfiles.SaveProfiles();
+            return true;
+        }
+
+        #endregion
+
+        /// <summary>
+        ///     Profile list for the web UI. Separate from <see cref="GetProfileList" />, which builds a
+        ///     base64 image reference per profile — the new UI only needs an avatar id and fetches the
+        ///     picture itself, cached.
+        /// </summary>
+        public static SProfileListEntry[] GetProfileListForWeb()
+        {
+            return CProfiles.GetProfiles()
+                            .Where(p => p.Active == EOffOn.TR_CONFIG_ON)
+                            .Select(p => new SProfileListEntry
+                                {
+                                    ProfileId = p.ID.ToString(),
+                                    PlayerName = p.PlayerName,
+                                    IsGuest = !p.UserRole.HasFlag(EUserRole.TR_USERROLE_NORMAL),
+                                    NeedsPassword = p.PasswordHash != null,
+                                    Difficulty = (int)p.Difficulty,
+                                    AvatarId = p.Avatar == null ? -1 : p.Avatar.ID
+                                })
+                            .OrderBy(p => p.PlayerName, StringComparer.OrdinalIgnoreCase)
+                            .ToArray();
+        }
+
         /// <summary>Name and difficulty of one profile, without loading its avatar.</summary>
         public static SProfileListEntry GetProfileSummary(Guid profileId)
         {
@@ -900,7 +970,8 @@ namespace Vocaluxe.Base.Server
                     PlayerName = profile.PlayerName,
                     IsGuest = !profile.UserRole.HasFlag(EUserRole.TR_USERROLE_NORMAL),
                     NeedsPassword = profile.PasswordHash != null,
-                    Difficulty = (int)profile.Difficulty
+                    Difficulty = (int)profile.Difficulty,
+                    AvatarId = profile.Avatar == null ? -1 : profile.Avatar.ID
                 };
         }
 

@@ -23,6 +23,9 @@
         selectedSong: null,
         selectedPartner: '',
         profileQuery: '',
+        avatars: [],
+        newAvatarId: -1,
+        avatarId: -1,
         partnerQuery: '',
         difficulty: 1,
         entries: []
@@ -38,7 +41,8 @@
          'queueList', 'queueEmpty', 'queueBadge', 'clearFinishedBtn', 'searchInput', 'songCount',
          'songList', 'moreBtn', 'songSheet', 'sheetTitle', 'sheetArtist', 'sheetMeta', 'partnerBox',
          'partnerLabel', 'micHint', 'partnerSearch', 'partnerList', 'signUpBtn', 'toast', 'meName',
-         'difficultyPicker', 'switchProfileBtn', 'profileSearch'].forEach(function (id) {
+         'difficultyPicker', 'switchProfileBtn', 'profileSearch', 'newAvatarBox', 'newAvatarGrid',
+         'meAvatarGrid', 'meAvatar'].forEach(function (id) {
             el[id.replace(/-([a-z])/g, function (m, c) { return c.toUpperCase(); })] = $(id);
         });
     }
@@ -101,6 +105,55 @@
         });
     }
 
+    function avatarUrl(id) {
+        return '/api/avatars/' + id + '/image';
+    }
+
+    function loadAvatars() {
+        return api('GET', '/api/avatars').then(function (list) {
+            state.avatars = list || [];
+            if (state.avatars.length && state.newAvatarId < 0)
+                state.newAvatarId = state.avatars[0].avatarId;
+            renderAvatarGrids();
+            return state.avatars;
+        }).catch(function () { /* ohne Avatare bleibt der Rest bedienbar */ });
+    }
+
+    function avatarGridHtml(selectedId, action) {
+        return state.avatars.map(function (a) {
+            return '<button class="avatar' + (a.avatarId === selectedId ? ' is-selected' : '')
+                + '" data-' + action + '="' + a.avatarId + '" title="' + escapeHtml(a.name) + '">'
+                + '<img src="' + avatarUrl(a.avatarId) + '" alt="' + escapeHtml(a.name) + '" loading="lazy">'
+                + '</button>';
+        }).join('');
+    }
+
+    function renderAvatarGrids() {
+        el.newAvatarBox.hidden = !state.avatars.length;
+        el.newAvatarGrid.innerHTML = avatarGridHtml(state.newAvatarId, 'newavatar');
+        el.meAvatarGrid.innerHTML = avatarGridHtml(state.avatarId, 'meavatar');
+    }
+
+    function setOwnAvatar(avatarId) {
+        var previous = state.avatarId;
+        state.avatarId = avatarId;
+        renderAvatarGrids();
+        renderMe();
+
+        api('POST', '/api/me/avatar', {avatarId: avatarId})
+            .then(function () {
+                toast('Bild geändert.');
+                // The profile list carries the avatar, so refresh it for the next sign-in screen.
+                loadProfiles();
+            })
+            .catch(function (e) {
+                state.avatarId = previous;
+                renderAvatarGrids();
+                renderMe();
+                toast(e.message, true);
+            });
+    }
+
     function matches(name, query) {
         return !query || String(name || '').toLowerCase().indexOf(query.toLowerCase()) >= 0;
     }
@@ -119,9 +172,12 @@
 
         el.profileList.innerHTML = shown.map(function (p) {
             return '<button class="profile-btn" data-id="' + escapeHtml(p.profileId) + '">'
-                + escapeHtml(p.playerName)
+                + (p.avatarId >= 0
+                    ? '<img class="profile-avatar" src="' + avatarUrl(p.avatarId) + '" alt="" loading="lazy">'
+                    : '')
+                + '<span class="profile-text">' + escapeHtml(p.playerName)
                 + (p.needsPassword ? '<span class="locked">mit Passwort</span>' : '')
-                + '</button>';
+                + '</span></button>';
         }).join('');
     }
 
@@ -181,6 +237,9 @@
 
     function renderMe() {
         el.meName.textContent = state.profileName || '–';
+        el.meAvatar.hidden = state.avatarId < 0;
+        if (state.avatarId >= 0)
+            el.meAvatar.src = avatarUrl(state.avatarId);
         Array.prototype.forEach.call(el.difficultyPicker.children, function (btn) {
             btn.classList.toggle('is-active', Number(btn.dataset.difficulty) === state.difficulty);
         });
@@ -190,6 +249,8 @@
         return api('GET', '/api/session').then(function (me) {
             if (me.playerName) state.profileName = me.playerName;
             if (typeof me.difficulty === 'number') state.difficulty = me.difficulty;
+            if (typeof me.avatarId === 'number') state.avatarId = me.avatarId;
+            renderAvatarGrids();
             el.whoName.textContent = state.profileName;
             renderMe();
         }).catch(function () { /* ohne Session zeigt die App ohnehin den Login */ });
@@ -455,7 +516,7 @@
             if (!name) { toast('Bitte einen Namen eingeben.', true); return; }
 
             el.newProfileBtn.disabled = true;
-            api('POST', '/api/profiles', {name: name})
+            api('POST', '/api/profiles', {name: name, avatarId: state.newAvatarId})
                 .then(function (res) {
                     setSession(res.sessionId, res.profileId);
                     return loadProfiles();
@@ -512,6 +573,18 @@
             if (start) startRequest(start.dataset.start);
         });
 
+        el.newAvatarGrid.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-newavatar]');
+            if (!btn) return;
+            state.newAvatarId = Number(btn.dataset.newavatar);
+            renderAvatarGrids();
+        });
+
+        el.meAvatarGrid.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-meavatar]');
+            if (btn) setOwnAvatar(Number(btn.dataset.meavatar));
+        });
+
         el.profileSearch.addEventListener('input', function () {
             state.profileQuery = el.profileSearch.value;
             renderProfiles();
@@ -562,6 +635,8 @@
     function init() {
         cacheElements();
         wire();
+
+        loadAvatars();
 
         loadProfiles().then(function () {
             if (!state.sessionId || !state.profileId) return;

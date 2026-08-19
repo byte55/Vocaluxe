@@ -29,6 +29,11 @@
             <input id="newProfileName" type="text" maxlength="30" placeholder="Neuer Name" autocomplete="off">
             <button id="newProfileBtn" class="btn btn-primary">Anlegen</button>
         </div>
+
+        <div id="newAvatarBox" class="avatar-box" hidden>
+            <div class="avatar-box-label">Bild aussuchen</div>
+            <div id="newAvatarGrid" class="avatar-grid"></div>
+        </div>
     </div>
 </section>
 
@@ -70,9 +75,15 @@
         <!-- Profil -->
         <section id="view-me" class="view">
             <div class="me-card">
-                <div class="me-label">Angemeldet als</div>
-                <div class="me-name" id="meName">–</div>
+                <img id="meAvatar" class="me-avatar" alt="" hidden>
+                <div>
+                    <div class="me-label">Angemeldet als</div>
+                    <div class="me-name" id="meName">–</div>
+                </div>
             </div>
+
+            <h2 class="section-title">Dein Bild</h2>
+            <div id="meAvatarGrid" class="avatar-grid"></div>
 
             <h2 class="section-title">Schwierigkeitsgrad</h2>
             <div class="segmented" id="difficultyPicker" role="group" aria-label="Schwierigkeitsgrad">
