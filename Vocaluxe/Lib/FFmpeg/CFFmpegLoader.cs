@@ -91,6 +91,15 @@ namespace Vocaluxe.Lib.FFmpeg
             return false;
         }
 
+        /// <summary>Turns an ffmpeg return code into the message ffmpeg has for it.</summary>
+        public static unsafe string ErrorText(int error)
+        {
+            const int bufferSize = 256;
+            byte* buffer = stackalloc byte[bufferSize];
+            ffmpeg.av_strerror(error, buffer, bufferSize);
+            return Marshal.PtrToStringAnsi((IntPtr)buffer) ?? error.ToString();
+        }
+
         // Held in a field: ffmpeg keeps calling this for the rest of the process, so the delegate
         // must not be collected.
         private static av_log_set_callback_callback _LogCallback;

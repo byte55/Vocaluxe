@@ -16,7 +16,6 @@
 #endregion
 
 using System;
-using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
 using Vocaluxe.Lib.FFmpeg;
 using VocaluxeLib.Log;
@@ -98,7 +97,7 @@ namespace Vocaluxe.Lib.Sound.Playback.Decoder
                 int res = ffmpeg.avformat_open_input(format, _FileName, null, null);
                 if (res < 0)
                 {
-                    CLog.Error("Error opening audio file: " + _FileName + " (" + _ErrorText(res) + ")");
+                    CLog.Error("Error opening audio file: " + _FileName + " (" + CFFmpegLoader.ErrorText(res) + ")");
                     return false;
                 }
             }
@@ -133,10 +132,6 @@ namespace Vocaluxe.Lib.Sound.Playback.Decoder
                 CLog.Error("Error setting up the audio decoder: " + _FileName);
                 return false;
             }
-
-            // Let ffmpeg spread the work; on this class of machine the decode thread is the one that
-            // has to keep up with playback.
-            _Codec->thread_count = 0;
 
             if (ffmpeg.avcodec_open2(_Codec, codec, null) < 0)
             {
@@ -176,7 +171,7 @@ namespace Vocaluxe.Lib.Sound.Playback.Decoder
                                                     0, null);
                 if (res < 0)
                 {
-                    CLog.Error("Error setting up the resampler: " + _FileName + " (" + _ErrorText(res) + ")");
+                    CLog.Error("Error setting up the resampler: " + _FileName + " (" + CFFmpegLoader.ErrorText(res) + ")");
                     return false;
                 }
             }
@@ -249,7 +244,7 @@ namespace Vocaluxe.Lib.Sound.Playback.Decoder
             int res = ffmpeg.av_seek_frame(_Format, _StreamIndex, target, flags);
             if (res < 0)
             {
-                CLog.Error("Error seeking in file: " + _FileName + " (" + _ErrorText(res) + ")");
+                CLog.Error("Error seeking in file: " + _FileName + " (" + CFFmpegLoader.ErrorText(res) + ")");
                 return;
             }
 
@@ -308,7 +303,7 @@ namespace Vocaluxe.Lib.Sound.Playback.Decoder
                 ffmpeg.av_packet_unref(_Packet);
                 if (res < 0 && res != ffmpeg.AVERROR(ffmpeg.EAGAIN))
                 {
-                    CLog.Error("Error decoding audio: " + _FileName + " (" + _ErrorText(res) + ")");
+                    CLog.Error("Error decoding audio: " + _FileName + " (" + CFFmpegLoader.ErrorText(res) + ")");
                     return false;
                 }
                 return true;
@@ -352,7 +347,7 @@ namespace Vocaluxe.Lib.Sound.Playback.Decoder
                                                  frame->extended_data, frame->nb_samples);
                 if (written < 0)
                 {
-                    CLog.Error("Error converting audio: " + _FileName + " (" + _ErrorText(written) + ")");
+                    CLog.Error("Error converting audio: " + _FileName + " (" + CFFmpegLoader.ErrorText(written) + ")");
                     return null;
                 }
                 if (written == 0)
@@ -363,14 +358,6 @@ namespace Vocaluxe.Lib.Sound.Playback.Decoder
                     Array.Resize(ref managed, actual);
             }
             return managed;
-        }
-
-        private static string _ErrorText(int error)
-        {
-            const int bufferSize = 256;
-            byte* buffer = stackalloc byte[bufferSize];
-            ffmpeg.av_strerror(error, buffer, bufferSize);
-            return Marshal.PtrToStringAnsi((IntPtr)buffer) ?? error.ToString();
         }
 
         public void Dispose()

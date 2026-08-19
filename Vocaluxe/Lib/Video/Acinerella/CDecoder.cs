@@ -23,6 +23,8 @@ namespace Vocaluxe.Lib.Video.Acinerella
 {
     class CDecoder
     {
+        private readonly IVideoStreamDecoder _Stream;
+
         private readonly Stopwatch _LoopTimer = new Stopwatch();
 
         private float _Gap;
@@ -33,8 +35,9 @@ namespace Vocaluxe.Lib.Video.Acinerella
         public float Length { get; private set; }
         public bool Finished { get; private set; }
 
-        public CDecoder()
+        public CDecoder(IVideoStreamDecoder stream)
         {
+            _Stream = stream;
             Length = 0;
             Finished = true;
         }
@@ -83,7 +86,7 @@ namespace Vocaluxe.Lib.Video.Acinerella
             if (!File.Exists(fileName))
                 return false;
 
-            _Thread = new CDecoderThread();
+            _Thread = new CDecoderThread(_Stream);
             if (_Thread.LoadFile(fileName))
             {
                 Length = _Thread.Length;

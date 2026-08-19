@@ -16,6 +16,8 @@
 #endregion
 
 using System.Collections.Generic;
+using Vocaluxe.Base;
+using Vocaluxe.Lib.FFmpeg;
 using Vocaluxe.Lib.Video.Acinerella;
 using VocaluxeLib;
 
@@ -25,6 +27,17 @@ namespace Vocaluxe.Lib.Video
     {
         private readonly Dictionary<int, CDecoder> _Decoder = new Dictionary<int, CDecoder>();
         private int _LastID;
+
+        /// <summary>
+        ///     Picks the video backend. ffmpeg only when it was asked for <b>and</b> the libraries are
+        ///     there - a missing ffmpeg must not leave the machine without video.
+        /// </summary>
+        private static IVideoStreamDecoder _CreateStreamDecoder()
+        {
+            if (CConfig.Config.Video.VideoBackend == EVideoBackend.FFmpeg && CFFmpegLoader.IsAvailable)
+                return new FFmpeg.CFFmpegStreamDecoder();
+            return new CAcinerellaStreamDecoder();
+        }
 
         public bool Init()
         {
@@ -41,7 +54,7 @@ namespace Vocaluxe.Lib.Video
 
         public CVideoStream Load(string videoFileName)
         {
-            var decoder = new CDecoder();
+            var decoder = new CDecoder(_CreateStreamDecoder());
 
             if (decoder.Open(videoFileName))
             {

@@ -190,6 +190,9 @@ namespace Vocaluxe.Base
         {
             [DefaultValue(EVideoDecoder.FFmpeg)]
             public EVideoDecoder VideoDecoder;
+            // Acinerella until the direct ffmpeg backend has proven itself on real material.
+            [DefaultValue(EVideoBackend.Acinerella)]
+            public EVideoBackend VideoBackend;
             [DefaultValue(EOffOn.TR_CONFIG_ON)]
             public EOffOn VideoBackgrounds;
             [DefaultValue(EOffOn.TR_CONFIG_ON)]

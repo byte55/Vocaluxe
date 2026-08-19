@@ -210,6 +210,20 @@ namespace VocaluxeLib
         FFmpeg
     }
 
+    /// <summary>
+    ///     Who actually decodes the video behind <see cref="EVideoDecoder.FFmpeg" />. Acinerella is
+    ///     the C wrapper Vocaluxe has always used; FFmpeg talks to the ffmpeg libraries directly.
+    /// </summary>
+    /// <remarks>
+    ///     Separate from <see cref="EVideoDecoder" /> on purpose: that one picks the container class
+    ///     and has meant "FFmpeg" since long before any of this went through ffmpeg directly.
+    /// </remarks>
+    public enum EVideoBackend
+    {
+        Acinerella,
+        FFmpeg
+    }
+
     public enum ESongMenu
     {
         // ReSharper disable InconsistentNaming

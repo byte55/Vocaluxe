@@ -87,6 +87,7 @@
   </Game>
   <Video>
     <VideoDecoder>FFmpeg</VideoDecoder>
+    <VideoBackend>Acinerella</VideoBackend>
     <VideoBackgrounds>TR_CONFIG_ON</VideoBackgrounds>
     <VideoPreview>TR_CONFIG_ON</VideoPreview>
     <VideosInSongs>TR_CONFIG_ON</VideosInSongs>

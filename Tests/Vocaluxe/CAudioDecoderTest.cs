@@ -87,30 +87,6 @@ namespace Tests.Vocaluxe
             return null;
         }
 
-        /// <summary>
-        ///     libacinerella.so lives in Output/, not next to the test binary. Tells the loader where
-        ///     to look so the comparison test can run from a plain "dotnet test".
-        /// </summary>
-        private static bool _AcinerellaAvailable()
-        {
-            string repo = TestContext.CurrentContext.TestDirectory;
-            for (int i = 0; i < 8 && repo != null; i++)
-            {
-                string candidate = Path.Combine(repo, "Output", "libacinerella.so");
-                if (File.Exists(candidate))
-                {
-                    NativeLibrary.SetDllImportResolver(typeof(CAudioDecoderAcinerella).Assembly,
-                                                       (name, assembly, path) =>
-                                                           name.IndexOf("acinerella", StringComparison.OrdinalIgnoreCase) >= 0
-                                                               ? NativeLibrary.Load(candidate)
-                                                               : IntPtr.Zero);
-                    return true;
-                }
-                repo = Path.GetDirectoryName(repo);
-            }
-            return false;
-        }
-
         private static SDecodeRun _DecodeAll(IAudioDecoder decoder, string file)
         {
             Assert.IsTrue(decoder.Open(file), "could not open " + file);
@@ -185,7 +161,7 @@ namespace Tests.Vocaluxe
             if (file == null)
                 Assert.Ignore("no song longer than " + _OverflowPoint + " s in the library");
 
-            if (!_AcinerellaAvailable())
+            if (!CNativeTestLibs.AcinerellaAvailable(typeof(CAudioDecoderAcinerella).Assembly))
                 Assert.Ignore("libacinerella.so not built - nothing to compare against");
 
             SDecodeRun mine = _DecodeAll(new CAudioDecoderFFmpeg(), file);
