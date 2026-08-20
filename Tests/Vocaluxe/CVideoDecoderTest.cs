@@ -91,6 +91,50 @@ namespace Tests.Vocaluxe
 
         #endregion helpers
 
+        /// <summary>
+        ///     Compares two decoded frames channel by channel, allowing a difference of one.
+        /// </summary>
+        /// <remarks>
+        ///     Not byte-exact on purpose. The two backends can end up on different ffmpeg builds - the
+        ///     distribution's against one we build ourselves - and swscale's C and SIMD paths round the
+        ///     YUV to BGRA conversion slightly differently. Measured on this machine: same build gives
+        ///     byte-identical frames, different build gives a worst difference of 3 and a mean of 0.52.
+        ///     The thresholds sit above that and far below what this test exists for - swapping red and
+        ///     blue moves the mean into the tens.
+        /// </remarks>
+        private static void _AssertSamePixels(byte[] expected, byte[] actual, int frame)
+        {
+            Assert.AreEqual(expected.Length, actual.Length, "frame " + frame + " has a different size");
+
+            int worst = 0;
+            long offenders = 0;
+            long sum = 0;
+            for (int i = 0; i < expected.Length; i++)
+            {
+                int difference = Math.Abs(expected[i] - actual[i]);
+                if (difference == 0)
+                    continue;
+                offenders++;
+                sum += difference;
+                if (difference > worst)
+                    worst = difference;
+            }
+
+            double mean = sum / (double)expected.Length;
+            Assert.LessOrEqual(worst, 8,
+                               "frame " + frame + ": channels differ by up to " + worst
+                               + " - too much for rounding, the pixel format is wrong");
+            Assert.LessOrEqual(mean, 1.0,
+                               "frame " + frame + ": channels differ by " + mean.ToString("F3") + " on average"
+                               + " - too much for rounding, the pixel format is wrong");
+            if (offenders > 0)
+            {
+                TestContext.WriteLine("  frame " + frame + ": " + offenders + " of " + expected.Length
+                                      + " channels differ, worst " + worst + ", mean " + mean.ToString("F3")
+                                      + " (the two backends are on different ffmpeg builds)");
+            }
+        }
+
         [Test]
         public void ProducesTheSamePixelsAsAcinerella()
         {
@@ -130,8 +174,7 @@ namespace Tests.Vocaluxe
                         break;
 
                     Assert.AreEqual(theirTime, myTime, 0.001, "timestamp of frame " + i);
-                    // Byte for byte: same pixel format, same channel order, same content.
-                    Assert.AreEqual(theirFrame, myFrame, "pixels of frame " + i);
+                    _AssertSamePixels(theirFrame, myFrame, i);
                     compared++;
                 }
 
