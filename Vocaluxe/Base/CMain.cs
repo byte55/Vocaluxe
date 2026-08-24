@@ -124,7 +124,7 @@ namespace Vocaluxe.Base
 
         public int GetCoverSize()
         {
-            return CConfig.Config.Graphics.CoverSize;
+            return CConfig.GetCoverSize();
         }
 
         public IEnumerable<string> GetSongFolders()

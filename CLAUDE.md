@@ -453,6 +453,44 @@ Die mitgelieferten Profile (Advanced, Beginner, Expert) liegen im
 Programmordner unter `dist/Vocaluxe/Profiles/`, selbst angelegte in
 `~/.config/Vocaluxe/Profiles/`.
 
+### Große Songbibliothek: was dabei passiert
+
+Gemessen mit **2807 Songs (54 GB)** auf diesem Rechner:
+
+| | |
+|---|---|
+| Songdateien einlesen | 5,0 s (warmer Dateicache; direkt nach dem Kopieren 33 s) |
+| Cover erzeugen | 39 s, danach aus dem Cache |
+| Speicher | 694 MiB |
+| `CoverDB.sqlite` | 39 MB |
+
+**Die Falle war der Speicher, nicht die Platte.** Cover liegen als unkomprimierte
+Texturen im RAM. Bei der eingestellten Größe von 512 px ist das **1 MB pro Song** —
+2807 Songs sind 2,9 GB, auf einem Rechner mit 7,2 GB und einer iGPU, die sich
+denselben Speicher teilt. Der Kernel hat Vocaluxe beim Cover-Laden abgeschossen
+(im Journal als `oom-kill`, GNOME meldete „device memory is nearly full"); im
+`Vocaluxe.log` steht als letzte Zeile nur `Started "Loaded Covers"`.
+
+Deshalb **richtet sich die Covergröße jetzt nach der Bibliotheksgröße**
+(`CConfig.GetCoverSize()`): alle Cover zusammen dürfen 512 MB belegen, bei 2807
+Songs sind das 218 px statt 512. Kleine Bibliotheken behalten die volle Größe. Was
+verloren geht, ist Schärfe auf der Kachelansicht — der Rechner startet dafür.
+
+Zwei weitere Stellen waren bei 48 Songs unsichtbar und bei 2800 fatal:
+
+- **`CTextureProvider._CheckQueue` leerte die Texturwarteschlange komplett, in
+  jedem Frame**, und hielt dabei ihre Sperre. Ein Frame musste also tausende
+  Uploads erledigen — das Bild steht, Navigieren wirkt kaputt. Jetzt höchstens
+  4 ms je Frame.
+- **Die Cover wurden mit einer Task pro Song geladen**, alle gleichzeitig
+  eingereiht. Jetzt auf die Kernanzahl begrenzt, wie das Einlesen der Songdateien.
+
+**Cover liegen als WebP in der Datenbank**, nicht mehr roh: 39 MB statt 2214 MB für
+denselben Bestand, also 57× weniger — und entsprechend weniger Plattenverkehr beim
+Start. `DatabaseCoverVersion` steht deshalb auf 2; eine ältere Cover-Datenbank wird
+**verworfen und neu aufgebaut** (samt `VACUUM`, sonst bliebe die Datei groß) statt
+wie früher eine `NotImplementedException` zu werfen, die den Start verhindert hätte.
+
 ### Falle: der erste Start nach einem Build scheitert oft
 
 Mehrfach beobachtet: direkt nach `./.build/build-linux.sh` beendet sich der

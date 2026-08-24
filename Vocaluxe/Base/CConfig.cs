@@ -623,6 +623,44 @@ namespace Vocaluxe.Base
         /// <summary>
         ///     Calculates the maximum cycle time to reach the MaxFPS value.
         /// </summary>
+        /// <summary>
+        ///     How large a cover may be, adjusted so a whole library's worth of them still fits in
+        ///     memory.
+        /// </summary>
+        /// <remarks>
+        ///     Covers are held as uncompressed textures: at the configured 512 pixels each one is a
+        ///     megabyte. That is nothing for a few dozen songs and fatal for a few thousand - 2800
+        ///     songs come to 2.9 GB on a machine with 7.2 GB and an integrated GPU sharing it, and
+        ///     the kernel killed Vocaluxe halfway through loading them. Nobody should have to know
+        ///     that adding songs can make the program stop starting, so the size gives way instead.
+        ///     The covers are drawn small; what is lost is sharpness on the tile board.
+        /// </remarks>
+        public static int GetCoverSize()
+        {
+            int configured = Config.Graphics.CoverSize;
+            int songs = CSongs.NumAllSongs;
+            if (songs <= 0)
+                return configured;
+
+            int fitting = (int)Math.Sqrt(_CoverMemoryBudgetBytes / (double)songs / 4);
+            if (fitting >= configured)
+                return configured;
+
+            // Not below this: a cover has to stay recognisable.
+            int size = Math.Max(64, fitting);
+            if (size != _LastReportedCoverSize)
+            {
+                _LastReportedCoverSize = size;
+                CLog.Information("Cover size reduced from " + configured + " to " + size
+                                 + " so " + songs + " covers fit in memory");
+            }
+            return size;
+        }
+
+        /// <summary>What all the covers together may occupy as textures.</summary>
+        private const long _CoverMemoryBudgetBytes = 512L * 1024 * 1024;
+        private static int _LastReportedCoverSize;
+
         public static float CalcCycleTime()
         {
             return (1f / Config.Graphics.MaxFPS) * 1000f;

@@ -43,7 +43,13 @@ namespace Vocaluxe.Lib.Database
                 if (_Version < 0)
                     return _CreateCoverDB();
                 if (_Version < CSettings.DatabaseCoverVersion)
-                    throw new NotImplementedException("Upgrading of cover DB not implemented");
+                {
+                    // This database is a cache and nothing else - every entry can be rebuilt from the
+                    // song folders. Throwing on an older version, as this did, turns a format change
+                    // into a program that will not start.
+                    CLog.Information("Cover cache is from an older version, building it again");
+                    return _RecreateCoverDB();
+                }
             }
             return true;
         }
@@ -102,15 +108,27 @@ namespace Vocaluxe.Lib.Database
                         if (reader.HasRows)
                         {
                             reader.Read();
-                            byte[] data2 = _GetBytes(reader);
+                            byte[] compressed = _GetBytes(reader);
                             reader.Dispose();
-                            tex = CDraw.EnqueueTexture(w, h, data2);
-                            return true;
+                            byte[] pixels = _Decode(compressed, w, h);
+                            if (pixels != null)
+                            {
+                                tex = CDraw.EnqueueTexture(w, h, pixels);
+                                return true;
+                            }
+                            // Unreadable entry - drop it and load from the file below.
+                            command.CommandText = "DELETE FROM Cover WHERE id = @id";
+                            command.Parameters.Clear();
+                            command.Parameters.AddWithValue("@id", id);
+                            command.ExecuteNonQuery();
                         }
-                        command.CommandText = "DELETE FROM Cover WHERE id = @id";
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@id", id);
-                        command.ExecuteNonQuery();
+                        else
+                        {
+                            command.CommandText = "DELETE FROM Cover WHERE id = @id";
+                            command.Parameters.Clear();
+                            command.Parameters.AddWithValue("@id", id);
+                            command.ExecuteNonQuery();
+                        }
                     }
                     if (reader != null)
                         reader.Close();
@@ -128,7 +146,8 @@ namespace Vocaluxe.Lib.Database
             }
 
             Size size;
-            byte[] data;
+            byte[] data;    // raw BGRA, what the renderer wants
+            byte[] stored;  // what goes into the database
             try
             {
                 using (var codec = SKCodec.Create(coverPath))
@@ -161,10 +180,16 @@ namespace Vocaluxe.Lib.Database
                                     return false;
                                 }
                                 data = scaled.Bytes;
+                                stored = _Encode(scaled, coverPath);
                             }
                         }
                         else
+                        {
                             data = origin.Bytes;
+                            stored = _Encode(origin, coverPath);
+                        }
+                        if (stored == null)
+                            return false;
                     }
                 }
             }
@@ -207,7 +232,7 @@ namespace Vocaluxe.Lib.Database
                         command.CommandText = "INSERT INTO CoverData (CoverID, Data) VALUES (@id, @data)";
                         command.Parameters.Clear();
                         command.Parameters.AddWithValue("@id", id);
-                        command.Parameters.AddWithValue("@data", data);
+                        command.Parameters.AddWithValue("@data", stored);
                         command.ExecuteNonQuery();
                         return true;
                     }
@@ -234,6 +259,88 @@ namespace Vocaluxe.Lib.Database
             _TransactionCover.Commit();
             _TransactionCover.Dispose();
             _TransactionCover = null;
+        }
+
+        /// <summary>
+        ///     Turns a cover into what is kept in the database.
+        /// </summary>
+        /// <remarks>
+        ///     WebP rather than the raw pixels this used to store. Raw is 4 bytes per pixel, so at the
+        ///     default cover size of 512 every song cost a megabyte: a library of 2800 songs made a
+        ///     2.2 GB cache file, and every single cover was a megabyte of disk traffic on a machine
+        ///     whose disk is the slowest thing it has. Encoded, a cover is tens of kilobytes.
+        /// </remarks>
+        private static byte[] _Encode(SKBitmap bitmap, string coverPath)
+        {
+            try
+            {
+                using (SKData encoded = bitmap.Encode(SKEncodedImageFormat.Webp, 85))
+                {
+                    if (encoded != null)
+                        return encoded.ToArray();
+                }
+                CLog.Error("Error encoding cover: " + coverPath);
+            }
+            catch (Exception e)
+            {
+                CLog.Error(e, "Error encoding cover: " + coverPath);
+            }
+            return null;
+        }
+
+        /// <summary>
+        ///     Back to the tightly packed BGRA the renderer uploads. Null if the entry cannot be read,
+        ///     which the caller treats as a miss rather than an error.
+        /// </summary>
+        private static byte[] _Decode(byte[] stored, int width, int height)
+        {
+            if (stored == null || stored.Length == 0)
+                return null;
+            try
+            {
+                var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
+                using (var bitmap = new SKBitmap(info))
+                {
+                    using (SKData data = SKData.CreateCopy(stored))
+                    using (var codec = SKCodec.Create(data))
+                    {
+                        if (codec == null)
+                            return null;
+                        SKCodecResult res = codec.GetPixels(info, bitmap.GetPixels());
+                        if (res != SKCodecResult.Success && res != SKCodecResult.IncompleteInput)
+                            return null;
+                    }
+                    return bitmap.Bytes;
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Throws the cache away and starts over, e.g. after a format change.</summary>
+        private bool _RecreateCoverDB()
+        {
+            try
+            {
+                using (var command = new SqliteCommand())
+                {
+                    command.Connection = _Connection;
+                    command.CommandText = "DROP TABLE IF EXISTS CoverData; DROP TABLE IF EXISTS Cover; DROP TABLE IF EXISTS Version;";
+                    command.ExecuteNonQuery();
+                    // Dropping tables does not shrink the file - without this the 2.2 GB the old
+                    // format grew to would just sit there as free pages.
+                    command.CommandText = "VACUUM;";
+                    command.ExecuteNonQuery();
+                }
+            }
+            catch (Exception e)
+            {
+                CLog.Error("Error clearing the cover cache " + e);
+                return false;
+            }
+            return _CreateCoverDB();
         }
 
         private bool _CreateCoverDB()
