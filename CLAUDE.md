@@ -85,12 +85,85 @@ Nativ und selbst zu bauen sind nur zwei Dinge:
 | `libPitchTracker.dll.so` | Pitch-Erkennung, Grundlage des Scorings | `PitchTracker/` |
 | `libacinerella.so` | Audio- **und** Video-Decode über ffmpeg | `Vocaluxe/Lib/Video/Acinerella/` |
 
-Es gibt **kein zweites Decode-Backend**. Fällt Acinerella aus, gibt es weder
-Ton noch Video.
-
 Der ffmpeg-6-Port von Acinerella ist an echtem Material erprobt: Songs mit
 Video und Tonausgabe laufen. Damit ist auch die Layout-Fallback-Logik in
 `ac_create_audio_decoder` praktisch bestätigt, nicht nur kompilierbar.
+
+### Zweites Decode-Backend: direkt gegen ffmpeg
+
+Seit `feature/ffmpeg-decoder` gibt es Ton und Bild wahlweise **ohne** die
+C-Zwischenschicht, über [FFmpeg.AutoGen](https://www.nuget.org/packages/FFmpeg.AutoGen)
+direkt gegen `libavformat`/`libavcodec`/`libswscale`/`libswresample`.
+**Acinerella ist weiter der Standard**, das neue Backend wird pro Bereich
+eingeschaltet — jeweils in der `Config.xml`, wirkt nach einem Neustart:
+
+```xml
+<AudioDecoder>FFmpeg</AudioDecoder>   <!-- unter <Sound>, sonst Acinerella -->
+<VideoBackend>FFmpeg</VideoBackend>   <!-- unter <Video>, sonst Acinerella -->
+```
+
+`VideoBackend` ist **nicht** dasselbe wie das ältere `VideoDecoder`: letzteres
+wählt die Containerklasse und heißt seit jeher „FFmpeg", lange bevor irgendetwas
+davon wirklich über ffmpeg lief.
+
+Ausgeliefert wird nichts — `CFFmpegLoader` sucht die Bibliotheken des Systems und
+nimmt **nur die exakten Sonames**, gegen die die Bindings erzeugt wurden (hier
+`libavformat.so.62`, passend zu Ubuntus ffmpeg 8.0.1). Eine andere Hauptversion
+wird abgelehnt statt riskant gebunden. Findet er nichts, fällt beides
+automatisch auf Acinerella zurück, statt stumm oder schwarz zu bleiben.
+`VOCALUXE_FFMPEG_PATH` setzt einen eigenen Suchpfad an die erste Stelle.
+Nebenbei landen ffmpegs eigene Meldungen jetzt im `Vocaluxe.log` statt auf
+stderr, wo sie niemand sieht.
+
+**Beim Video steckt die Falle im Pixelformat.** Acinerella fordert
+`AV_PIX_FMT_RGB32` an, und das ist auf Little-Endian **BGRA** im Speicher. Ein
+Backend, das RGBA schreibt, dekodiert einwandfrei, verliert kein Frame, besteht
+jede Zeitmessung — und wirft blaue Gesichter auf den Beamer. Deshalb vergleicht
+`CVideoDecoderTest` die tatsächlichen Bytes beider Backends.
+
+Umgebaut wurde nur, *wer* dekodiert: `CDecoderThread` mit Ringpuffer,
+Frame-Dropping und Loop-Logik ist unverändert und wird von beiden Backends
+geteilt (`IVideoStreamDecoder`, sechs Methoden).
+
+**Gemessen** (257ers - Holland, 212 s mp3, 1920×1080 mp4):
+
+| | Acinerella | direkt über ffmpeg |
+|---|---|---|
+| CPU im Song | 65 % eines Kerns | 65 % eines Kerns |
+| bis zur Auswertung | 217 s | 217 s |
+| Audio dekodiert | 212,10 s, 8839 Frames | identisch |
+| Videoframes | — | byte-identisch |
+
+Ein Wert, der mich korrigiert hat: mit `thread_count = 0` (ffmpeg verteilt die
+Arbeit) kostete dasselbe Video **85 %** statt 65 %. Frame-Threading kauft Latenz,
+die dieser Rechner nicht braucht, und bezahlt sie mit CPU, die er nicht hat.
+Beide Decoder lassen den ffmpeg-Standard deshalb in Ruhe.
+
+### ffmpeg selbst mitliefern — geprüft, nicht umgesetzt
+
+Ubuntus ffmpeg **mitzukopieren ist keine Option**: die fünf Bibliotheken hängen
+an 96 weiteren, zusammen ~76 MB, inklusive glib, cairo, librsvg und x264.
+
+Ein eigener Minimal-Build dagegen schon. Gemessen mit ffmpeg 8.0,
+`--disable-everything` plus genau die Demuxer, Decoder und Parser für
+UltraStar-Material: **8,7 MB, keine Fremdabhängigkeiten außer `libc`**, zwei
+Minuten Bauzeit, Lizenz **LGPL 2.1 or later** (wir dekodieren nur, brauchen also
+weder x264 noch x265 und bleiben aus dem GPL-Zweig heraus).
+
+**`nasm` ist Pflicht.** Ohne ist der Build ohne SIMD und dekodiert 1080p rund
+**dreimal langsamer**. Ist installiert (3.01).
+
+Der Gewinn wäre Unabhängigkeit von der Distribution: Steigt Ubuntu auf ffmpeg 9,
+passt `libavformat.so.62` nicht mehr und das Backend fällt auf Acinerella
+zurück. Offen bleibt die Patentfrage beim Weitergeben von H.264/AAC-Decodern —
+für den privaten Rechner belanglos, für eine Veröffentlichung nicht.
+
+Ein Nebenbefund daraus: Der Pixelvergleich im Test darf **nicht** byte-genau
+sein, sobald die beiden Backends auf verschiedenen ffmpeg-Builds sitzen.
+swscale rundet in C anders als in SIMD — gemessen: gleicher Build byte-identisch,
+anderer Build schlimmstenfalls 3 daneben, im Mittel 0,52 von 255. Der Test prüft
+deshalb den Abstand (Maximum 8, Mittel 1), was einen vertauschten Rot/Blau-Kanal
+weiterhin sofort auffliegen lässt, weil der das Mittel in die Dutzende treibt.
 
 Kein SDL2 — das taucht nur noch in Kommentaren auf.
 
@@ -462,5 +535,13 @@ anschlägt, wird hier justiert — nicht am Mixer.
 - **Pegel final einstellen**: beim *Singen* justieren, nicht beim Sprechen —
   Sprechen ist deutlich leiser und führt zu einer zu hohen Einstellung, die
   dann beim Singen clippt. Zielbereich 60–70 % Spitze.
+- **Das ffmpeg-Backend im Alltag erproben.** Ton und Bild laufen im Test
+  gleichauf mit Acinerella, aber ein Testlauf ist kein Abend. Umschalten wie oben
+  beschrieben; fällt über mehrere Abende nichts auf, kann Acinerella weg — dann
+  fallen `acinerella.c` samt Header, die P/Invoke-Schicht, der `make`-Schritt im
+  Build und `libav*-dev` als Build-Abhängigkeit weg, und nativ bleibt nur noch
+  der PitchTracker.
+- **Erst danach** lohnt es, ffmpeg selbst mitzuliefern (Zahlen oben). Zwei
+  ungeprüfte Dinge gleichzeitig auf die Bühne zu schieben, wäre der falsche Weg.
 - Theme-Videos (`BG_Video.mp4`, `IntroIn/Mid/Out.mp4`) fehlen im Repo, das Log
   meldet „Expect visual problems". Rein kosmetisch.
