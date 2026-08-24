@@ -401,13 +401,33 @@ namespace Vocaluxe.Lib.Draw
             }
         }
 
+        /// <summary>
+        ///     How long uploading queued textures may take out of one frame.
+        /// </summary>
+        /// <remarks>
+        ///     There used to be no limit: the queue was drained completely, every frame. With a
+        ///     handful of songs that is invisible, but the cover loader queues one texture per song,
+        ///     so a large library meant a single frame doing thousands of uploads while holding the
+        ///     queue lock - the picture stands still and navigating feels broken, right when covers
+        ///     are streaming in. Spreading the work over frames costs nothing: at 60 FPS this still
+        ///     uploads for a quarter of every second.
+        /// </remarks>
+        private const double _QueueMillisecondsPerFrame = 4;
+
         protected void _CheckQueue()
         {
             _EnsureMainThread();
+            Stopwatch budget = Stopwatch.StartNew();
+            int handled = 0;
             lock (_TextureQueue)
             {
                 while (_TextureQueue.Count > 0)
                 {
+                    // Never zero textures per frame, or a slow single upload would stall for good.
+                    if (handled > 0 && budget.Elapsed.TotalMilliseconds >= _QueueMillisecondsPerFrame)
+                        break;
+                    handled++;
+
                     STextureQueue q = _TextureQueue.Dequeue();
 
                     if (q.Action == EQueueAction.Add)

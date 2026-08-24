@@ -446,22 +446,20 @@ namespace Vocaluxe.Base
         {
             using (CBenchmark.Time("Loaded Covers"))
             {
-                int songCount = _Songs.Count;
-                AutoResetEvent ev = new AutoResetEvent(songCount == 0);
-
                 NumSongsWithCoverLoaded = 0;
-                foreach (CSong song in _Songs)
-                {
-                    CSong tmp = song;
-                    Task.Factory.StartNew(() =>
-                    {
-                        tmp.LoadSmallCover();
-                        if (Interlocked.Increment(ref _NumSongsWithCoverLoaded) >= songCount)
-                            ev.Set();
-                    });
-                }
 
-                ev.WaitOne();
+                // One task per song used to be queued at once. That is fine for a handful and a
+                // storm for a real library: thousands of tasks all reading images and writing to
+                // the cover database, on a disk that may well be busy with something else. Bounded
+                // to the number of cores, the covers arrive just as fast and the machine stays
+                // usable while they do.
+                var options = new ParallelOptions {MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount)};
+                Parallel.ForEach(_Songs.ToList(), options, song =>
+                {
+                    song.LoadSmallCover();
+                    Interlocked.Increment(ref _NumSongsWithCoverLoaded);
+                });
+
                 _CoverLoaded = true;
                 CDataBase.CommitCovers();
             }
