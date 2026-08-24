@@ -352,6 +352,11 @@ namespace Vocaluxe.Base.Server
                     SingerNames = r.SingerNames.ToList(),
                     State = r.State,
                     CreatedAt = r.CreatedAt,
+                    // Was missing here, which is worse than it looks: every copy leaves through this
+                    // method - the API responses and the file on disk. So a running song reported
+                    // startedAt: null to every phone, and a restart mid-song lost the only record of
+                    // when it began, which is what the thirty-second rule is measured against.
+                    StartedAt = r.StartedAt,
                     CreatedBy = r.CreatedBy
                 };
         }
@@ -376,6 +381,18 @@ namespace Vocaluxe.Base.Server
                 {
                     _Requests.Clear();
                     _Requests.AddRange(loaded);
+
+                    // Nothing can still be playing after a start. Left as it was, a song interrupted
+                    // by a crash would show as "now playing" to every guest for the rest of the
+                    // evening. Back into the queue rather than counted as sung: nobody got to finish
+                    // it, so it keeps its place - which is what this whole file is here for.
+                    foreach (CSongRequest r in _Requests.Where(x => x.State == ESongRequestState.Playing.ToString()))
+                    {
+                        r.State = ESongRequestState.Waiting.ToString();
+                        r.StartedAt = null;
+                        CLog.Information("Song request " + r.RequestId + " was interrupted and goes back into the queue");
+                    }
+
                     _NextId = _Requests.Count > 0 ? _Requests.Max(x => x.RequestId) + 1 : 1;
                     _Touch();
                 }
