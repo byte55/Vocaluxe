@@ -36,6 +36,10 @@ namespace Vocaluxe.Screens
         }
 
         private CTextureRef _QRServerAddress;
+        // What the cached QR was made from. The relay hands out a room code after the screen has
+        // already been shown once, and it changes if the relay forgets us - so the picture cannot
+        // simply be generated a single time.
+        private string _QRAddress = "";
         private const string _StaticQRServer = "StaticQRServer";
 
         private const string _TextServerAddress = "TextServerAddress";
@@ -52,11 +56,13 @@ namespace Vocaluxe.Screens
         public override void OnShow()
         {
             base.OnShow();
-            if (_QRServerAddress == null)
+            string address = CVocaluxeServer.GetGuestAddress();
+            if (_QRServerAddress == null || _QRAddress != address)
             {
+                _QRAddress = address;
                 _GenerateQRs();
                 _Statics[_StaticQRServer].Texture = _QRServerAddress;
-                _Texts[_TextServerAddress].Text = CVocaluxeServer.GetServerAddress();
+                _Texts[_TextServerAddress].Text = address;
             }
             _Texts[_TextServerAddress].Visible = CVocaluxeServer.IsServerRunning();
             _Statics[_StaticQRServer].Visible = CVocaluxeServer.IsServerRunning();
@@ -98,7 +104,7 @@ namespace Vocaluxe.Screens
 
         private void _GenerateQRs()
         {
-            string address = CVocaluxeServer.GetServerAddress();
+            string address = _QRAddress;
             if (string.IsNullOrEmpty(address))
                 return;
             try

@@ -133,5 +133,9 @@
     <ServerEncryption>TR_CONFIG_OFF</ServerEncryption>
     <ServerPort>3000</ServerPort>
     <SongCountCoverThreshold>70</SongCountCoverThreshold>
+    <RemoteRelay>TR_CONFIG_OFF</RemoteRelay>
+    <RemoteRelayUrl />
+    <RemoteRelayToken />
+    <RemoteAgentId />
   </Server>
 </root>

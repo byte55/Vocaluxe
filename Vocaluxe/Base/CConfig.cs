@@ -223,6 +223,24 @@ namespace Vocaluxe.Base
             public int ServerPort;
             [DefaultValue(70)]
             public int SongCountCoverThreshold;
+
+            /// <summary>
+            ///     Dial out to a relay so guests can reach the queue without being on this network.
+            ///     See Vocaluxe-server/README.md; the token is the one the relay was started with.
+            /// </summary>
+            [DefaultValue(EOffOn.TR_CONFIG_OFF)]
+            public EOffOn RemoteRelay;
+            [DefaultValue("")]
+            public string RemoteRelayUrl;
+            [DefaultValue("")]
+            public string RemoteRelayToken;
+            /// <summary>
+            ///     Identifies this installation to the relay, which hands back the room that already
+            ///     belongs to it. Generated once on first use - the room code lives on the relay, so
+            ///     this is the only thing that has to survive a restart here.
+            /// </summary>
+            [DefaultValue("")]
+            public string RemoteAgentId;
         }
 #pragma warning restore 649
         // ReSharper restore UnassignedField.Global

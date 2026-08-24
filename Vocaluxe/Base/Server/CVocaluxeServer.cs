@@ -161,6 +161,9 @@ namespace Vocaluxe.Base.Server
                 _Running = true;
                 _StatusKey = "";
                 CLog.Information("Webserver running at " + _Address);
+                // Only after the local server is up: the agent serves guest requests by running
+                // them against it.
+                CRelayAgent.Start();
             }
             catch (Exception e)
             {
@@ -174,6 +177,7 @@ namespace Vocaluxe.Base.Server
 
         public static void Close()
         {
+            CRelayAgent.Stop();
             if (_App == null)
                 return;
             try
@@ -192,6 +196,24 @@ namespace Vocaluxe.Base.Server
         public static string GetServerAddress()
         {
             return _Address;
+        }
+
+        /// <summary>
+        ///     The address to put in front of guests: the relay when one is connected, otherwise this
+        ///     machine on the local network. The relay is preferred because it is the one that works
+        ///     for someone who is not on this network - which is the whole point of having it.
+        /// </summary>
+        public static string GetGuestAddress()
+        {
+            if (CRelayAgent.IsConnected)
+                return (CConfig.Config.Server.RemoteRelayUrl ?? "").Trim().TrimEnd('/') + "/r/" + CRelayAgent.RoomCode + "/";
+            return _Address;
+        }
+
+        /// <summary>The room code guests type on the relay, or an empty string when there is none.</summary>
+        public static string GetRoomCode()
+        {
+            return CRelayAgent.RoomCode;
         }
 
         public static bool IsServerRunning()

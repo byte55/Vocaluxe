@@ -338,6 +338,42 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
   Ohne beides hing das Beenden über das Hauptmenü 30 Sekunden, sobald auch nur
   ein Handy die Seite offen hatte.
 
+### Gäste ohne WLAN: das Relay
+
+Damit Gäste die Warteliste erreichen, **ohne im selben Netz zu sein**, kann sich
+Vocaluxe bei einem externen Relay einwählen. Der Rechner nimmt dabei **keine**
+Verbindung an — er wählt sich heraus, hängt in einem Long-Poll und führt
+hereinkommende Gastanfragen gegen seinen **eigenen lokalen Webserver** aus. Damit
+sind Relay-Weg und lokaler Weg derselbe Code; es gibt keine zweite Implementierung,
+die auseinanderlaufen könnte. Portfreigaben und Zertifikate entfallen.
+
+Der Server liegt in **`~/Vocaluxe-server`** (Node, ohne Abhängigkeiten, Docker +
+Traefik). Aufbau, Protokoll und die Sicherheitsabwägung stehen in dessen README.
+
+```xml
+<RemoteRelay>TR_CONFIG_ON</RemoteRelay>
+<RemoteRelayUrl>https://karaoke.example.com</RemoteRelayUrl>
+<RemoteRelayToken>…</RemoteRelayToken>
+```
+
+- **Der lokale Server bleibt.** Das Relay kommt daneben, nicht an seine Stelle —
+  fällt es aus, bedient die Anlage weiter jeden, der im Netz ist.
+- **Der Raumcode wird ausschließlich vom Relay vergeben**, sechs Ziffern. Vocaluxe
+  speichert ihn nicht, sondern weist sich mit `RemoteAgentId` aus (wird beim ersten
+  Start einmal erzeugt) und bekommt seinen Raum zurück. **Neustarts von Vocaluxe
+  ändern den Code also nicht**, ein Neustart des Relays schon — dessen Zustand liegt
+  nur im Speicher.
+- **Das QR-Popup zeigt den Relay-Link**, sobald eine Verbindung steht, sonst wie
+  bisher die lokale Adresse.
+- **Die Fernbedienung ist für Gäste gesperrt** (`RELAY_BLOCKED_PREFIXES`), sie
+  schiebt Tastendrücke ins Spiel und gehört nicht ins offene Internet.
+- **Der Ereignisstrom wird wörtlich durchgereicht.** Die Seite liest die Warteliste
+  direkt aus der Nachricht — eine Zusammenfassung statt der Nutzlast leert jedem
+  Gast die Liste. Gemessen: 27 ms von der Änderung bis zur Anzeige über das Relay.
+- Ein Nebenbefund: Die Revisionsmeldung darf **nicht** in der Poll-Schleife stecken.
+  Die parkt fast durchgehend im Long-Poll, Änderungen kämen dann bis zu einem ganzen
+  Poll-Fenster zu spät. Sie läuft in einer eigenen Aufgabe.
+
 ### Am Bildschirm: wer als Nächstes dran ist
 
 Nach jedem Song kündigt der **Score-Screen** den nächsten Wartenden an — Song,

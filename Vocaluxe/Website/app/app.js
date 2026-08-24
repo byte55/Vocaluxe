@@ -52,6 +52,11 @@
 
     /* ------------------------------------------------------------------ HTTP */
 
+    // Everything below /r/<code>/ when the page came through the relay, empty when it was served
+    // straight off the machine. Taking the directory part of our own location covers both without
+    // the page having to be told which way it was reached.
+    var BASE = location.pathname.replace(/\/[^\/]*$/, '');
+
     function api(method, path, body) {
         var opts = {
             method: method,
@@ -63,7 +68,7 @@
             opts.body = JSON.stringify(body);
         }
 
-        return fetch(path, opts).then(function (res) {
+        return fetch(BASE + path, opts).then(function (res) {
             var isJson = (res.headers.get('content-type') || '').indexOf('json') >= 0;
             return (isJson ? res.json().catch(function () { return null; }) : res.text())
                 .then(function (data) {
@@ -109,7 +114,7 @@
     }
 
     function avatarUrl(id) {
-        return '/api/avatars/' + id + '/image';
+        return BASE + '/api/avatars/' + id + '/image';
     }
 
     function loadAvatars() {
@@ -560,7 +565,7 @@
     function connectEvents() {
         if (!window.EventSource || connectEvents._source) return;
 
-        var source = new EventSource('/api/events');
+        var source = new EventSource(BASE + '/api/events');
         connectEvents._source = source;
 
         source.onmessage = function (event) {
