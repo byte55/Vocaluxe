@@ -160,10 +160,22 @@ namespace Vocaluxe.Lib.Draw
         }
 */
 
+        // The viewport and all pixel reads work in framebuffer pixels, NOT in ClientSize: GLFW reports
+        // the client size in logical units. With desktop scaling (150 % on a 4K screen under Wayland)
+        // the framebuffer is 3840x2160 while ClientSize says 2560x1440 - a viewport sized from
+        // ClientSize then covers only the lower-left two thirds of the screen.
+        // Mouse coordinates are logical as well, so GetScreenWidth/Height stay on ClientSize.
+        private Vector2i _FramebufferSize
+        {
+            get { return _Window.FramebufferSize; }
+        }
+
         protected override void _DoResize()
         {
-            _H = _Window.ClientSize.Y;
-            _W = _Window.ClientSize.X;
+            _H = _FramebufferSize.Y;
+            _W = _FramebufferSize.X;
+            if (_W != _Window.ClientSize.X || _H != _Window.ClientSize.Y)
+                CLog.Information("Framebuffer " + _W + "x" + _H + " for window " + _Window.ClientSize.X + "x" + _Window.ClientSize.Y + " (desktop scaling)");
             _CurrentAlignment = CConfig.Config.Graphics.ScreenAlignment;
 
             if (CConfig.Config.Graphics.Stretch != EOffOn.TR_CONFIG_ON)
@@ -246,8 +258,8 @@ namespace Vocaluxe.Lib.Draw
         {
             string file = CHelper.GetUniqueFileName(Path.Combine(CSettings.DataFolder, CSettings.FolderNameScreenshots), "Screenshot.png");
 
-            int width = GetScreenWidth();
-            int height = GetScreenHeight();
+            int width = _FramebufferSize.X;
+            int height = _FramebufferSize.Y;
 
             byte[] data = new byte[width * height * 4];
             GL.ReadPixels(0, 0, width, height, PixelFormat.Bgra, PixelType.UnsignedByte, data);
@@ -271,7 +283,7 @@ namespace Vocaluxe.Lib.Draw
         public CTextureRef CopyScreen()
         {
             //TODO: Check if _W,_H needs to be used or not
-            Size size = new Size(GetScreenWidth(), GetScreenHeight());
+            Size size = new Size(_FramebufferSize.X, _FramebufferSize.Y);
             COGLTexture texture = _CreateTexture(size);
 
             GL.BindTexture(TextureTarget.Texture2D, texture.Name);
@@ -285,7 +297,8 @@ namespace Vocaluxe.Lib.Draw
         {
             COGLTexture texture;
             //Check for actual texture sizes as it may be downsized compared to OrigSize
-            if (!_GetTexture(textureRef, out texture) || texture.DataSize.Width != GetScreenWidth() || texture.DataSize.Height != GetScreenHeight())
+            Vector2i fb = _FramebufferSize;
+            if (!_GetTexture(textureRef, out texture) || texture.DataSize.Width != fb.X || texture.DataSize.Height != fb.Y)
             {
                 RemoveTexture(ref textureRef);
                 textureRef = CopyScreen();
@@ -293,7 +306,7 @@ namespace Vocaluxe.Lib.Draw
             else
             {
                 GL.BindTexture(TextureTarget.Texture2D, texture.Name);
-                GL.CopyTexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, 0, 0, GetScreenWidth(), GetScreenHeight());
+                GL.CopyTexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, 0, 0, fb.X, fb.Y);
                 GL.BindTexture(TextureTarget.Texture2D, 0);
             }
         }

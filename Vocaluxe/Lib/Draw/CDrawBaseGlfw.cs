@@ -247,6 +247,9 @@ namespace Vocaluxe.Lib.Draw
 
             _Window.Closing += _OnClosing;
             _Window.Resize += _OnResize;
+            // The framebuffer can change without the logical size changing (desktop scaling switched,
+            // window moved to a monitor with a different scale), and Resize does not fire then.
+            _Window.FramebufferResize += e => _DoResize();
             _Window.MouseMove += _OnMouseMove;
             _Window.MouseWheel += _OnMouseWheel;
             _Window.MouseDown += _OnMouseDown;
