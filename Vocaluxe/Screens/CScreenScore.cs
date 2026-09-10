@@ -24,6 +24,7 @@ using Vocaluxe.Base;
 using Vocaluxe.Base.Server;
 using VocaluxeLib;
 using VocaluxeLib.Game;
+using VocaluxeLib.Log;
 using VocaluxeLib.Menu;
 using VocaluxeLib.Songs;
 
@@ -186,6 +187,24 @@ namespace Vocaluxe.Screens
 
             for (int p = 0; p < CGame.NumPlayers; p++)
                 _Statics[_StaticAvatar[p, CGame.NumPlayers - 1]].Aspect = EAspect.Crop;
+        }
+
+        public override void OnShowFinish()
+        {
+            base.OnShowFinish();
+
+            // The music behind this screen is whatever sits in the preview player, and only the song
+            // menu ever fills that - with the song *selected* there. Starting from the song menu, that
+            // happens to be the song just sung. A song started from the web queue never passes through
+            // the menu, so this screen kept playing the last song picked by hand, hours ago if need be.
+            // Load the song that was actually sung. Here rather than in OnShow: the sing screen has been
+            // closed by now, and CGraphics switches to the preview player right after this returns.
+            int lastRound = Math.Min(CGame.RoundNr - 1, CGame.NumRounds - 1);
+            CSong song = lastRound >= 0 ? CGame.GetSong(lastRound) : null;
+            if (song == null)
+                return;
+            CBackgroundMusic.LoadPreview(song);
+            CLog.Information("Score screen plays " + song.Artist + " - " + song.Title);
         }
 
         /// <summary>Announces who is up next and counts down; blinks once the time is up.</summary>
