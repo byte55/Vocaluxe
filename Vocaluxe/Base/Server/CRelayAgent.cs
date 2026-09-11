@@ -47,7 +47,14 @@ namespace Vocaluxe.Base.Server
     /// </remarks>
     static class CRelayAgent
     {
-        private static readonly HttpClient _Relay = new HttpClient();
+        // PooledConnectionLifetime is the point here, not performance: .NET keeps a pooled connection
+        // - and with it the address it once resolved - for as long as it stays usable. The relay sits
+        // behind a line that reconnects and changes address, so a machine that never re-resolves ends
+        // up dialling an address nobody answers on any more. Recycling them picks up the new one.
+        private static readonly HttpClient _Relay = new HttpClient(new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+            });
         private static readonly HttpClient _Local = new HttpClient {Timeout = TimeSpan.FromSeconds(30)};
 
         private static CancellationTokenSource _Cancel;
@@ -57,6 +64,9 @@ namespace Vocaluxe.Base.Server
         private static string _Room = "";
         private static string _Error = "";
         private static long _SentRevision = -1;
+
+        /// <summary>How long the relay holds a poll open; it tells us on hello. Our own limit follows it.</summary>
+        private static int _PollSeconds = 25;
 
         /// <summary>The room code guests type, or an empty string while not connected.</summary>
         public static string RoomCode
@@ -206,7 +216,13 @@ namespace Vocaluxe.Base.Server
         {
             var body = new StringContent(JsonSerializer.Serialize(new SHello {AgentId = _AgentId}),
                                          Encoding.UTF8, "application/json");
-            using (HttpResponseMessage res = await _Relay.PostAsync(url + "/agent/hello", body, cancel))
+            // Bounded like the poll: on a network that swallows packets - a strange venue, a phone
+            // hotspot - an unbounded hello would sit there for HttpClient's 100 s before the backoff
+            // even starts counting.
+            var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            using (timeout)
+            using (HttpResponseMessage res = await _Relay.PostAsync(url + "/agent/hello", body, timeout.Token))
             {
                 if (!res.IsSuccessStatusCode)
                 {
@@ -218,6 +234,8 @@ namespace Vocaluxe.Base.Server
                 }
 
                 SHelloResult result = JsonSerializer.Deserialize<SHelloResult>(await res.Content.ReadAsStringAsync(cancel));
+                if (result != null && result.PollSeconds > 0)
+                    _PollSeconds = result.PollSeconds.Clamp(5, 120);
                 _Room = result?.Room ?? "";
                 _Error = "";
                 _SentRevision = -1; // make sure the first poll reports where we stand
@@ -275,8 +293,15 @@ namespace Vocaluxe.Base.Server
 
         private static async Task _PollOnce(string url, CancellationToken cancel)
         {
+            // The relay answers a poll after _PollSeconds at the latest, so anything much beyond that
+            // means the connection died under us - which is the normal case on a strange network, and
+            // the machine travels to the party. HttpClient's own 100 s default would leave every guest
+            // waiting more than a minute longer than necessary each time.
+            var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            timeout.CancelAfter(TimeSpan.FromSeconds(_PollSeconds + 10));
+            using (timeout)
             using (HttpResponseMessage res = await _Relay.GetAsync(url + "/agent/poll?room=" + _Room,
-                                                                   HttpCompletionOption.ResponseContentRead, cancel))
+                                                                   HttpCompletionOption.ResponseContentRead, timeout.Token))
             {
                 if (res.StatusCode == System.Net.HttpStatusCode.NotFound || res.StatusCode == System.Net.HttpStatusCode.Forbidden)
                 {
@@ -393,6 +418,7 @@ namespace Vocaluxe.Base.Server
         private class SHelloResult
         {
             [JsonPropertyName("room")] public string Room { get; set; }
+            [JsonPropertyName("pollSeconds")] public int PollSeconds { get; set; }
         }
 
         private class SEvent
