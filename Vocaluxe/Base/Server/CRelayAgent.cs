@@ -166,7 +166,14 @@ namespace Vocaluxe.Base.Server
 
                     await _PollOnce(url, cancel);
                 }
-                catch (OperationCanceledException)
+                // Only a real shutdown ends the loop. A timeout of the long poll arrives as
+                // TaskCanceledException, which IS an OperationCanceledException even though nobody
+                // cancelled anything - and that is exactly what a dead connection looks like (the
+                // router reconnects, the WLAN address changes, the relay goes away). Catching it
+                // here without asking the token ended the loop for good: no log line, no socket, no
+                // way back short of restarting Vocaluxe, while the relay kept showing guests the
+                // last known state.
+                catch (OperationCanceledException) when (cancel.IsCancellationRequested)
                 {
                     break;
                 }
@@ -188,6 +195,10 @@ namespace Vocaluxe.Base.Server
                     }
                 }
             }
+            // Nothing restarts this worker (Start() returns early while _Worker is set), so if it
+            // ever leaves the loop without being asked to, say so instead of going quiet.
+            if (!cancel.IsCancellationRequested)
+                CLog.Error("The relay worker stopped on its own - guests can only reach the queue on this network now");
             _Room = "";
         }
 
@@ -250,7 +261,7 @@ namespace Vocaluxe.Base.Server
                             _SentRevision = revision;
                     }
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cancel.IsCancellationRequested)
                 {
                     break;
                 }
@@ -302,7 +313,7 @@ namespace Vocaluxe.Base.Server
             {
                 answer = await _Execute(request, cancel);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
             {
                 return;
             }
@@ -317,7 +328,7 @@ namespace Vocaluxe.Base.Server
                 var body = new StringContent(JsonSerializer.Serialize(answer), Encoding.UTF8, "application/json");
                 using (await _Relay.PostAsync(url + "/agent/respond?room=" + _Room, body, cancel)) { }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
             catch (Exception e)
             {
                 CLog.Error(e, "Could not hand a response back to the relay");
