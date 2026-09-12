@@ -75,6 +75,14 @@ namespace Vocaluxe.Lib.Database
                 return false;
             }
 
+            // Only the database access belongs under the lock. Decoding the image used to happen
+            // in here too, and since every cover in the library goes through this one mutex, the
+            // four threads loading them spent their time queuing instead of working. The bytes
+            // come out of the database locked, everything after that runs in parallel.
+            int cacheId = -1;
+            int cacheW = 0, cacheH = 0;
+            byte[] compressed = null;
+
             lock (_Mutex)
             {
                 //Double check here because we may have just closed our connection
@@ -108,19 +116,12 @@ namespace Vocaluxe.Lib.Database
                         if (reader.HasRows)
                         {
                             reader.Read();
-                            byte[] compressed = _GetBytes(reader);
+                            compressed = _GetBytes(reader);
                             reader.Dispose();
-                            byte[] pixels = _Decode(compressed, w, h);
-                            if (pixels != null)
-                            {
-                                tex = CDraw.EnqueueTexture(w, h, pixels);
-                                return true;
-                            }
-                            // Unreadable entry - drop it and load from the file below.
-                            command.CommandText = "DELETE FROM Cover WHERE id = @id";
-                            command.Parameters.Clear();
-                            command.Parameters.AddWithValue("@id", id);
-                            command.ExecuteNonQuery();
+                            reader = null;
+                            cacheId = id;
+                            cacheW = w;
+                            cacheH = h;
                         }
                         else
                         {
@@ -132,6 +133,32 @@ namespace Vocaluxe.Lib.Database
                     }
                     if (reader != null)
                         reader.Close();
+                }
+            }
+
+            if (compressed != null)
+            {
+                byte[] cached = _Decode(compressed, cacheW, cacheH);
+                if (cached != null)
+                {
+                    tex = CDraw.EnqueueTexture(cacheW, cacheH, cached);
+                    return true;
+                }
+                // Unreadable entry - drop it and load from the file below.
+                lock (_Mutex)
+                {
+                    if (_Connection != null)
+                    {
+                        using (var command = new SqliteCommand())
+                        {
+                            command.Connection = _Connection;
+                            if (_TransactionCover != null)
+                                command.Transaction = _TransactionCover;
+                            command.CommandText = "DELETE FROM Cover WHERE id = @id";
+                            command.Parameters.AddWithValue("@id", cacheId);
+                            command.ExecuteNonQuery();
+                        }
+                    }
                 }
             }
 
