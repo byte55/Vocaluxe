@@ -52,6 +52,27 @@ make -C Vocaluxe/Lib/Video/Acinerella     # -> libacinerella.so
 Beide kopieren sich selbst nach `Output/`. `dist/` und die `.so` in `Output/`
 sind gitignored.
 
+`build-linux.sh` kennt drei Stellschrauben als Umgebungsvariablen: `DOTNET`
+(Pfad zum SDK), `RID` (Vorgabe `linux-x64`) und `SELFCONTAINED` (Vorgabe `true`,
+bündelt die .NET-Laufzeit mit).
+
+Zum Weitergeben gibt es ein AppImage:
+
+```bash
+./.build/make-appimage.sh    # -> dist/Vocaluxe-x86_64.AppImage
+```
+
+Das ist **vollständig eigenständig**: .NET-Laufzeit, die eigenen nativen
+Bibliotheken *und* PortAudio, FFmpeg und fontconfig samt Abhängigkeiten stecken
+darin. Es läuft also auf einem Rechner, auf dem nichts davon installiert ist.
+Gebraucht wird `appimagetool` (lädt sich selbst nach, braucht Netz und FUSE).
+
+Die drei Anleitungen im Repo — [Linux](HowToBuildLinux.md),
+[macOS](HowToBuildMac.md), [Windows](HowToBuildWin.md) — beschreiben dasselbe für
+ein frisches System. **Achtung, der Linux-Text ist an einer Stelle veraltet:** Er
+behauptet unter „Notes / current limitations", der Webserver sei abgeschaltet.
+Das stimmt seit der Web-Warteliste nicht mehr.
+
 ### Abhängigkeiten
 
 Bereits installiert; hier nur zur Vollständigkeit, falls neu aufgesetzt wird:
@@ -63,6 +84,50 @@ sudo apt install -y dotnet-sdk-10.0 build-essential \
 ```
 
 `dotnet-sdk-10.0` kommt aus dem Ubuntu-Archiv, kein Microsoft-Repo nötig.
+
+## Tests
+
+Ein Testprojekt für alles: `Tests/Tests.csproj` (NUnit 3 mit
+`NUnit3TestAdapter`), mit Projektverweisen auf `Vocaluxe`, `VocaluxeLib` und
+`PartyModeChallenge`.
+
+```bash
+dotnet test Tests/Tests.csproj -c Release                     # alles, 227 Tests, ~5 s
+dotnet test Tests/Tests.csproj -c Release --no-build \
+    --filter "FullyQualifiedName~CXmlSerializerTest"          # eine Testklasse
+dotnet test Tests/Tests.csproj -c Release --no-build \
+    --filter "Name=TestBasic"                                 # ein einzelner Test
+```
+
+Abgedeckt sind Audio- und Video-Decoder, Imaging, das Laden der nativen
+Bibliotheken, Log und Log-Rotation, Kombinatorik, der XML-Serialisierer und der
+Challenge-Party-Mode. Nichts davon braucht eine Anzeige oder eine Soundkarte,
+und übersprungen wird kein Test.
+
+**Der XML-Serialisierer testet gegen echte Dateien.** `TestRealFiles` serialisiert
+unter anderem `CConfig.SConfig` und vergleicht mit
+`Tests/VocaluxeLib/XML/TestFiles/SConfig.xml`. Wer ein Feld zur `Config.xml`
+hinzufügt, muss diese Referenzdatei mitziehen — sonst schlägt der Test fehl, und
+zwar mit genau der Zeile, die fehlt.
+
+### CI: drei Betriebssysteme, und sie ist das Tor
+
+`.github/workflows/ci.yml` läuft bei **jedem Push**. Je Betriebssystem erst ein
+Testjob (Linux, Windows, macOS), und nur wenn der grün ist, baut der zugehörige
+Paketjob das Artefakt. Die gemeinsamen Schritte stehen in der lokalen Composite
+Action `.github/actions/build-test/action.yml`:
+
+```bash
+dotnet restore Tests/Tests.csproj
+dotnet build   Tests/Tests.csproj -c Release --no-restore
+dotnet test    Tests/Tests.csproj -c Release --no-build --logger "trx;LogFileName=test-results.trx"
+```
+
+Der Sinn der drei Betriebssysteme: Die `WIN`/`LINUX`/`MACOS`-Zweige kompilieren
+sonst nur hier. Was die CI **nicht** prüft, ist alles Sichtbare und Hörbare —
+GUI, Audio und Rendering laufen auf keinem Runner, und die gepackten Builds
+werden nirgends gestartet. Da hier direkt auf den Fork gepusht wird, lohnt sich
+`dotnet test` vorher lokal.
 
 ## Architektur, soweit für Änderungen relevant
 
@@ -123,7 +188,7 @@ jede Zeitmessung — und wirft blaue Gesichter auf den Beamer. Deshalb vergleich
 
 Umgebaut wurde nur, *wer* dekodiert: `CDecoderThread` mit Ringpuffer,
 Frame-Dropping und Loop-Logik ist unverändert und wird von beiden Backends
-geteilt (`IVideoStreamDecoder`, sechs Methoden).
+geteilt (`IVideoStreamDecoder`, sieben Methoden und eine Eigenschaft).
 
 **Gemessen** (257ers - Holland, 212 s mp3, 1920×1080 mp4):
 
@@ -171,7 +236,7 @@ Kein SDL2 — das taucht nur noch in Kommentaren auf.
 
 Diese Fixes liegen als Commits auf dem Branch. Keiner davon ist
 maschinenspezifisch: die ersten drei treffen jeden Linux-Build mit aktuellem
-ffmpeg, die letzten beiden jeden unter Wayland.
+ffmpeg, die letzten drei jeden unter Wayland.
 
 - **Acinerella auf ffmpeg 6+ portiert.** Die `int64_t`-Channel-Layout-Bitmaske
   ist in ffmpeg 5.1/6.0 der `AVChannelLayout`-Struct gewichen. Ubuntu 26.04
@@ -217,6 +282,16 @@ ffmpeg, die letzten beiden jeden unter Wayland.
   Fensterposition ab, die das Protokoll Clients bewusst nicht gibt — der Start
   starb in „Init Draw". Jetzt wird geloggt statt geworfen. **Vocaluxe läuft
   damit nativ unter Wayland, XWayland ist nicht nötig.**
+- **Viewport aus der Framebuffer-Größe** (`COpenGL.cs`). GLFW meldet
+  `ClientSize` in *logischen* Pixeln. Mit Desktop-Skalierung — beim Einrichten
+  zu Hause hängt ein LG UltraGear 4K mit **150 %** dran; im Einsatz ist es ein
+  Full-HD-Beamer ohne Skalierung, dort fällt der Fehler nicht auf — ist der Framebuffer
+  3840×2160, `ClientSize` aber 2560×1440. Sichtbar als: **das Spiel füllt nur
+  die untere linke Ecke**, rund zwei Drittel, Rest schwarz (OpenGL zählt von
+  unten links). Viewport, Screenshot und `CopyScreen` nehmen jetzt
+  `FramebufferSize`; die Mausumrechnung bleibt bei `ClientSize`, weil auch die
+  Cursorposition logisch ist. Im Log steht bei Skalierung
+  `Framebuffer 3840x2160 for window 2560x1440`.
 
 Bei weiteren Wayland-Themen (Fullscreen, Maus-Grab) zuerst ins Log schauen, ob
 wieder eine `FeatureUnavailable`-Meldung dahintersteckt.
@@ -247,11 +322,13 @@ initialisiert ist**: Exit-Code 0 nach ~0,1 s, kein Log-Eintrag, und nicht einmal
 die vorgesehene Meldung „Another Instance of Vocaluxe is already runnning!",
 weil der reguläre Zweig gar nicht erreicht wird.
 
-**Der genaue Pfad ist nicht stabil.** Beobachtet wurde
-`/tmp/.dotnet/shm/global/<Hash>.server` — weder ein `session*`-Verzeichnis noch
-ein lesbarer Name. Ein auf `session*` gemünztes Aufräumkommando greift also ins
-Leere und die Sperre bleibt liegen; deshalb immer das ganze `shm`-Verzeichnis
-entfernen.
+**Der genaue Pfad ist nicht stabil.** Mal liegt dort nur
+`/tmp/.dotnet/shm/global/<Hash>.server` — ohne `session*`-Verzeichnis und ohne
+lesbaren Namen —, mal beides nebeneinander, etwa
+`global/Jla74Ksk….server` **und** `session<PID>/Vocaluxe-SingleInstanceMutex`
+(nachgesehen am 2026-09-12, beide vorhanden). Ein auf eine der beiden Formen
+gemünztes Aufräumkommando trifft also je nach Lage ins Leere und die Sperre
+bleibt liegen; deshalb immer das ganze `shm`-Verzeichnis entfernen.
 
 Beim normalen Schließen des Fensters passiert das nicht. Falls es doch klemmt:
 
@@ -374,6 +451,60 @@ Traefik). Aufbau, Protokoll und die Sicherheitsabwägung stehen in dessen README
   Die parkt fast durchgehend im Long-Poll, Änderungen kämen dann bis zu einem ganzen
   Poll-Fenster zu spät. Sie läuft in einer eigenen Aufgabe.
 
+#### Falle: Ein Zeitablauf sieht aus wie ein Abbruch
+
+`HttpClient` wirft bei Zeitablauf eine `TaskCanceledException`, und die **ist**
+eine `OperationCanceledException` — obwohl niemand abgebrochen hat
+(nachgemessen: der eigene Token steht dabei auf `IsCancellationRequested ==
+false`). `CRelayAgent._Run` fing das als „wir fahren herunter" und verließ die
+Schleife endgültig. Genau so sieht aber eine **gestorbene Leitung** aus: DSL-
+Zwangstrennung, gewechselte LAN-Adresse, weggefallene NAT-Sitzung.
+
+Sichtbar war das am 2026-09-12 so: Vocaluxe lief seit 25 Stunden, hatte **einen
+einzigen Socket** (den eigenen Lauscher auf 3000), keine Zeile im Log seit dem
+Start — und Gäste sahen trotzdem eine Warteliste. Der Relay beantwortete sie aus
+seinem Zwischenspeicher. `Start()` steigt außerdem bei gesetztem `_Worker` sofort
+aus, es versuchte es also nie wieder jemand.
+
+Jetzt beendet nur ein **abgebrochener Token** die Schleife
+(`catch (…) when (cancel.IsCancellationRequested)`), alles andere ist ein Fehler,
+wird geloggt und mit dem vorhandenen Backoff erneut versucht. Der Raumcode bleibt
+dabei gleich, weil die `RemoteAgentId` unverändert ist.
+
+**Ob der Agent wirklich hängt, verrät nicht der Gastweg.** Eine 200er-Antwort über
+den Relay kann aus dessen Zwischenspeicher kommen (erkennbar an ~40 ms
+Antwortzeit). Verlässlich ist der Socket:
+
+```bash
+ss -tanp | grep Vocaluxe | grep -v LISTEN    # muss eine Verbindung nach :443 zeigen
+```
+
+#### Der Rechner reist mit: Abbrüche sind der Normalfall
+
+Am Abend steht die Anlage in einem **fremden Netz mit anderer IP**. Ein
+Verbindungsabbruch ist dort kein Zwischenfall, sondern Alltag, und zwei
+Standardwerte von .NET stehen dem im Weg:
+
+- **`HttpClient` wartet 100 s**, bevor er eine stille tote Leitung aufgibt. Der
+  Poll bekommt deshalb ein eigenes Zeitlimit von **Poll-Fenster + 10 s** (das
+  Fenster meldet der Relay bei der Anmeldung, Vorgabe 25 s), die Anmeldung eines
+  von 20 s. Beides über `CancellationTokenSource.CreateLinkedTokenSource`, damit
+  ein echter Abbruch weiter sofort wirkt.
+- **Verbindungen im Pool leben unbegrenzt** — und mit ihnen die einmal aufgelöste
+  Adresse. Da der Relay selbst hinter einer Leitung mit wechselnder IP hängt,
+  bliebe Vocaluxe sonst auf einer toten Adresse kleben. `PooledConnectionLifetime`
+  steht deshalb auf 2 Minuten, damit der Name neu aufgelöst wird.
+
+**Gemessen** gegen einen Relay-Ersatz (Attrappe, die die Abfrage nie beantwortet
+bzw. hart wegfällt):
+
+| | |
+|---|---|
+| stille tote Leitung erkannt | nach 37 s (vorher: gar nicht, die Schleife starb) |
+| hart weggefallener Relay erkannt | sofort |
+| wieder angemeldet, **ohne Neustart** | 4 s später |
+| Raumcode danach | unverändert, weil die `RemoteAgentId` gleich bleibt |
+
 ### Am Bildschirm: wer als Nächstes dran ist
 
 Nach jedem Song kündigt der **Score-Screen** den nächsten Wartenden an — Song,
@@ -394,6 +525,14 @@ Enter verlässt den Screen wie früher.
 
 Gebaut in `Vocaluxe/Screens/CScreenScore.cs`; die Textelemente `TextNextUp*`
 stehen im Theme (`ScreenScore.xml`, ScreenVersion 5).
+
+**Die Musik im Score-Screen ist der gerade gesungene Song.** Das war nicht
+selbstverständlich: Der Screen spielt, was im Vorschau-Player liegt
+(`EMusicType.BackgroundPreview`), und den füllt sonst nur das Song-Menü mit
+dem dort *markierten* Song. Ein Web-Start läuft am Menü vorbei, deshalb lief
+nach Web-Songs der zuletzt von Hand gewählte Song. `CScreenScore.OnShowFinish`
+lädt jetzt den Song der letzten Runde; im Log steht
+`Score screen plays <Artist> - <Titel>`.
 
 **Ein Song zählt erst ab 30 Sekunden als gesungen.** Wird früher abgebrochen,
 geht der Eintrag zurück in die Warteliste — ein Fehlstart soll niemanden seinen
@@ -525,87 +664,258 @@ meldet dem Client den minimierten Zustand gar nicht, GLFW liefert weiterhin
 
 ## Audio-Eingang (Mikrofone)
 
-Interface: **Behringer Xenyx QX1002USB**, USB-Codec ist ein TI PCM2902
-(`08bb:2902`). Meldet sich als ALSA-Card `CODEC` und in PipeWire als
-„PCM2902 Audio Codec Analog Stereo". Kann **16 Bit, 48 kHz, Stereo** — mehr
-nicht, das reicht aber für zwei Spieler.
+Interface: **Steinberg UR22mkII** (Yamaha, USB `0499:170f`). Meldet sich als
+ALSA-Card 2 `UR22mkII`, in PipeWire als „Steinberg UR22mkII". Zwei
+Mikrofoneingänge mit getrennten Vorverstärkern, zwei Ausgänge, **24 Bit**
+(`S32_LE`-Container), Raten von 44,1 bis 192 kHz — hier läuft alles auf
+**44100 Hz**, siehe unten.
 
 Mikrofon: **the t.bone MB 45 II**, dynamisch, Superniere. Braucht **keine**
-Phantomspeisung, +48 V bleibt aus.
+Phantomspeisung, der `+48V`-Schalter am UR22 bleibt aus.
 
-### Falle: `USB/2-TR TO MAIN MIX` schaltet die Aufnahme stumm
+### Spielertrennung erledigt die Hardware
 
-Der Mixer hat zwei Taster in der Gruppe `USB/2-TR`. Der zweite,
-**`TO MAIN MIX`, muss ausgerastet sein.** Aus dem Handbuch:
+Die beiden Eingänge sind physisch getrennte Kanäle — keine Übersprechung,
+nichts zu pannen, kein Summenweg, an dem etwas schiefgehen könnte. PipeWire
+legt über das ALSA-UCM-Profil sogar zwei eigene Mono-Quellen an:
 
-> USB/2-TR TO MAIN MIX button routes USB/2-Track playback to MAIN MIX and
-> **mutes the 2-TR OUT/USB recording signal.**
+Welche Nodes dabei entstehen, hängt am **Profil** des Geräts
+(`wpctl set-profile <card-id> <n>`):
 
-Gedrückt verhält sich der Aufbau wie ein Defekt: Mixer arbeitet, alle Lampen
-reagieren, der Kompressor zeigt Signal — und der Rechner bekommt trotzdem
-digitale Stille bei −90 dBFS. Zum Mithören des Rechnertons ist der *erste*
-Taster (`TO PHONES/CTRL RM`) zuständig, der den Aufnahmeweg nicht antastet.
-Für Karaoke wird keiner von beiden gebraucht, der Ton kommt direkt aus dem
-Rechner.
+| Profil | Nodes | brauchbar für |
+|---|---|---|
+| 1 `HiFi` (Standard) | zwei **Mono**-Quellen `…HiFi__Line2__source` / `…Line3__source`, Sink `…HiFi__Line1__sink` | normalen Desktop-Betrieb |
+| 3 `Pro Audio` | ein 2-Kanal-Paar `…pro-input-0:capture_AUX0/AUX1`, Sink `…pro-output-0:playback_AUX0/AUX1` | DAW/Patchbay |
 
-### Spielertrennung über Panorama
+Umgeschaltet wird mit `~/.local/bin/karaoke-mode.sh` (siehe Reaper-Abschnitt);
+im Normalbetrieb steht das Gerät auf `HiFi`. Unter `HiFi` splittet das UCM-Profil die Eingänge in zwei
+getrennte Mono-Quellen, und der Stereo-Node ist `Audio/Source/Internal` — er
+lässt sich dann *nicht* als Standardquelle wählen, was Anwendungen mit
+Stereo-Eingang auf Mono festnagelt. Genau daran scheitert der DAW-Betrieb unter
+`HiFi`.
 
-Der USB-Aufnahmeweg trägt die **Hauptmischung**, sein Pegel hängt am
-MAIN-MIX-Fader. Beide Mikrofone landen deshalb per Default summiert auf beiden
-Kanälen — für Vocaluxe unbrauchbar, beide Spieler sähen dasselbe Signal.
-
-Trennung entsteht erst durch hartes Panning: **MIC 1 ganz nach links,
-MIC 2 ganz nach rechts.** Gemessen mit MIC 1 hart links: 59 % Spitzenpegel
-links gegen 0,9 % rechts, also **36 dB Kanaltrennung** — für die
-Tonhöhenerkennung mehr als genug.
+Vocaluxe greift ohne DAW im Weg gar nicht auf diese Nodes zu, sondern über
+PortAudio/ALSA direkt auf `hw:2,0`.
 
 Pegel prüfen ohne Vocaluxe:
 
 ```bash
-arecord -D pipewire -f S16_LE -c 2 -r 48000 -d 6 /tmp/mic.wav
+arecord -D pipewire -f S16_LE -c 2 -r 44100 -d 6 /tmp/mic.wav
 ```
 
-`-D pipewire` statt `-D hw:CODEC,0`, dann kollidiert es nicht mit einer
-laufenden Instanz — der PCM2902 lässt sich nur exklusiv öffnen. Bequemer geht
-es mit `~/Desktop/messung.sh`, das eine Live-Aussteuerungsanzeige zeigt.
+`-D pipewire` statt `-D hw:UR22mkII,0` — dann kollidiert es nicht mit einer
+laufenden Vocaluxe-Instanz, die das Gerät exklusiv offen hält. Bequemer geht es
+mit `~/Desktop/messung.sh`, das eine Live-Aussteuerungsanzeige zeigt.
 
 ### Zuordnung in Vocaluxe
 
 **Optionen → Aufnahme → „Aufnahmeeinstellungen"**. Pro Spieler werden zwei
-Dinge gesetzt: **Soundkarte** (für beide dieselbe, der USB-Codec) und
-**Eingang**, also die Kanalnummer.
+Dinge gesetzt: **Soundkarte** (für beide dieselbe) und **Eingang**, also die
+Kanalnummer.
 
-| | Gerät | Kanal | am Mixer |
+| | Gerät | Kanal | am UR22 |
 |---|---|---|---|
-| Spieler 1 | USB Audio CODEC | **1** | MIC 1, PAN hart links |
-| Spieler 2 | USB Audio CODEC | **2** | MIC 2, PAN hart rechts |
+| Spieler 1 | `Steinberg UR22mkII: USB Audio (hw:2,0)` | **1** | INPUT 1 |
+| Spieler 2 | `Steinberg UR22mkII: USB Audio (hw:2,0)` | **2** | INPUT 2 |
 
 Die Kanalnummer zählt **pro Gerät**, nicht durchlaufend über alle Geräte —
-MIC 2 ist also Kanal 2, nicht Kanal 4. Kanal 1 ist links, Kanal 2 ist rechts,
-mehr hat der PCM2902 nicht.
+INPUT 2 ist also Kanal 2, nicht Kanal 4.
 
-Die Automatik trifft diesen Fall meist von selbst: `CConfig.AutoAssignMics` sucht
-ein Aufnahmegerät, dessen Name auf `Usb|Wireless` passt, und legt bei
-mindestens zwei Kanälen Spieler 1 auf Kanal 1 und Spieler 2 auf Kanal 2
-(`Vocaluxe/Base/CConfig.cs:668`).
+Die Automatik trifft diesen Fall von selbst: `CConfig.AutoAssignMics` sucht ein
+Aufnahmegerät, dessen Name auf `Usb|Wireless` passt (mit `IgnoreCase`), und legt
+bei mindestens zwei Kanälen Spieler 1 auf Kanal 1 und Spieler 2 auf Kanal 2
+(`Vocaluxe/Base/CConfig.cs:721`). „Steinberg UR22mkII: USB Audio" enthält
+„USB", passt also.
 
 Der Bildschirm zeigt je Spieler eine Pegelanzeige — damit lässt sich die
-Zuordnung direkt gegenprüfen: beim Singen in MIC 1 darf sich nur der Balken
-von Spieler 1 rühren. Bewegen sich beide, stimmt das Panorama am Mixer nicht.
-Vocaluxe warnt zusätzlich selbst mit „Momentan sind einem Spieler zwei
-Mikrofone zugeordnet!".
+Zuordnung gegenprüfen: beim Singen in INPUT 1 darf sich nur der Balken von
+Spieler 1 rühren. Vocaluxe warnt zusätzlich selbst mit „Momentan sind einem
+Spieler zwei Mikrofone zugeordnet!".
 
-**Mikrofonverzögerung** im selben Bildschirm gleicht die Latenz zwischen Ton
-und Erkennung aus. Wenn die Bewertung systematisch zu früh oder zu spät
-anschlägt, wird hier justiert — nicht am Mixer.
+**Mikrofonverzögerung** im selben Bildschirm gleicht die Latenz zwischen Ton und
+Erkennung aus, in 20-ms-Schritten von 0 bis 500 ms
+(`Vocaluxe/Screens/CScreenOptionsRecord.cs:96`). Wenn die Bewertung systematisch
+zu früh oder zu spät anschlägt, wird hier justiert. Messen statt raten:
+`Vocaluxe/Lib/Sound/Record/CDelayTest.cs` steckt hinter dem Delay-Test im selben
+Bildschirm.
+
+**Mikrofonverstärkung** steht im selben Bildschirm darunter: `<MicAmplify>` unter
+`<Record>`, **0 bis 30 dB in 1-dB-Schritten** (0 = aus). Gedacht ist sie für den
+Fall, dass sich am UR22 nicht weiter aufdrehen lässt, ohne dass es koppelt — die
+analoge Verstärkung bleibt dann niedrig und der Pegel wird digital nachgezogen.
+
+Angewandt wird sie in `CBuffer.ProcessNewBuffer`, also **vor** der
+Tonhöhenerkennung und nur auf dem Erkennungsweg; der Songton bleibt unberührt.
+Der Faktor ist `10^(dB/20)`, und die Rechnung **sättigt**: Ein übersteuerter Wert
+klippt, statt das Vorzeichen zu drehen. Andernfalls sähe der PitchTracker bei
+lauten Stellen Müll statt eines zu lauten Tons.
+
+Erst die Vorverstärker am Gerät ausreizen, dann hier nachhelfen — digital
+verstärkt wird auch das Rauschen mit.
+
+Der Regler heißt `SelectSlideAmplify`; weil er neu im Theme steckt, steht
+`ScreenOptionsRecord.xml` auf **ScreenVersion 6**. Ein älteres Theme ohne diesen
+Regler wird nicht mehr geladen.
+
+### Ausgang: Vocaluxe folgt dem Standard-Sink
+
+**Vocaluxe hat keine Ausgabegeräte-Auswahl.** `CPortAudioStream.cs:205` öffnet
+fest `PortAudio.DefaultOutputDevice`, und das ist hier `default` über die
+ALSA-Host-API — also PipeWires Brücke. Wohin der Ton geht, entscheidet damit
+ausschließlich der **Standard-Sink von PipeWire**. In Vocaluxe selbst gibt es
+dafür nichts einzustellen, und es braucht auch keinen Codeeingriff.
+
+Gewünschter Ausgang steht in **`~/.config/karaoke/output-sink`**, eine Zeile mit
+einem **Teilstring des `node.name`**. Aktuell:
+
+```
+UR22mkII        # Ausgabe über das Interface
+```
+
+Bewusst kein exakter Name: der UR22-Sink heißt je nach Profil
+`…HiFi__Line1__sink` (Modus `direct`) oder `…pro-output-0` (Modus `daw`) — ein
+fester Eintrag überlebt den Moduswechsel nicht, `UR22mkII` passt auf beides.
+Für die Klinke am Rechner stattdessen `pci-0000_00_1b.0.analog` eintragen.
+
+`karaoke-mode.sh` stellt den passenden Sink nach jedem Moduswechsel wieder her —
+ein Profilwechsel am UR22 wirft den Standard-Sink sonst auf ein beliebiges
+Gerät. Einmalig umstellen geht auch mit `wpctl set-default <id>`, das hält aber
+nur bis zum nächsten Wechsel.
+
+Die Buchsen des Onboard-Codecs haben Steckererkennung, sichtbar über die
+`Route`-Parameter des Geräts:
+
+| Route | Buchse | Zustand |
+|---|---|---|
+| 1 | Line Out | `available: no` — Kabel gezogen |
+| 2 | Speakers | `available: no` |
+| 3 | Headphones | `available: no` |
+
+Steht die gewünschte Buchse auf `no`, ist schlicht kein Stecker drin — dann
+hilft kein Umkonfigurieren. Testton zum Gegenhören lässt sich mit `pw-play` auf
+den Standard-Sink schicken.
+
+### Abtastrate ist absichtlich festgenagelt
+
+`~/.config/pipewire/pipewire.conf.d/10-vocaluxe-44100.conf` setzt
+`default.clock.rate = 44100` und `allowed-rates = [ 44100 ]`. Das steht dort für
+Vocaluxe. Wer eine DAW dazustellt, stellt deren Projekt ebenfalls auf 44,1 kHz,
+sonst wird die ganze Kette hindurch unnötig resampelt.
+
+## Reaper als DAW im Signalweg
+
+Ziel: die Mikrofone laufen durch **Reaper** (Aufnahme fürs spätere Mixing,
+Gate/EQ/Kompressor), Vocaluxe bekommt sie trotzdem für die Tonhöhenerkennung.
+Reaper liegt in `~/opt/REAPER`, benutzerlokal installiert aus dem Tarball —
+ein Repo gibt es dafür nicht.
+
+Der Trick ist ein **virtueller Sink als Übergabepunkt**. Vocaluxes
+Geräteauflistung (`CPortAudioRecord.cs:47`) nimmt jedes PortAudio-Gerät mit
+`maxInputChannels > 0`, ohne nach Host-API zu filtern, und PortAudio hat hier
+neben ALSA auch PulseAudio. Damit taucht der `.monitor` eines Null-Sinks in
+Vocaluxe als ganz normales Aufnahmegerät auf — geprüft, er meldet sich als
+`KaraokeVocals.monitor`, 2 Kanäle, 44100 Hz.
+
+Angelegt sind zwei Sinks in
+`~/.config/pipewire/pipewire.conf.d/20-karaoke-daw.conf`:
+
+| Sink | Richtung | wofür |
+|---|---|---|
+| `KaraokeVocals` | Reaper → Vocaluxe | trockener Gesang, links Spieler 1, rechts Spieler 2 |
+| `KaraokeSong` | Vocaluxe → Reaper | Songwiedergabe mitschneiden (erst mit JACK nutzbar) |
+
+### Signalweg
+
+```
+UR22 INPUT 1 ─ capture_AUX0 ─┐
+                             ├─► REAPER  Spur 1 (hart links)  ─┐
+UR22 INPUT 2 ─ capture_AUX1 ─┘         Spur 2 (hart rechts) ──┴─► KaraokeVocals
+                                                                       │
+                                          Vocaluxe nimmt auf von ──────┘
+                                          KaraokeVocals.monitor, Kanal 1 + 2
+```
+
+Verkabelt wird mit **`~/.local/bin/karaoke-routing.sh`** (setzt den
+Standard-Sink aufs UR22 und legt die Links). Die Links sind nicht persistent,
+das Skript gehört nach jedem Reaper-Start noch einmal ausgeführt. Grafisch geht
+dasselbe mit `qpwgraph`.
+
+Das Reaper-Projekt liegt als Vorlage unter
+`~/.config/REAPER/ProjectTemplates/Karaoke.RPP`, erzeugt von
+`~/.config/REAPER/Scripts/karaoke-setup.lua` (ReaScript, ohne SWS-Erweiterung
+lauffähig). Zwei Spuren, scharfgeschaltet, Input-Monitoring an, Mono-Eingang 1
+bzw. 2, hart nach links bzw. rechts gepannt.
+
+### Umschalten: `~/.local/bin/karaoke-mode.sh direct|daw`
+
+**Falle, die einen halben Abend kosten kann:** Im Profil `Pro Audio` lässt
+WirePlumber das Gerät **dauerhaft geöffnet** (`/proc/asound/card2/pcm0c/sub0/status`
+zeigt `state: RUNNING`, Besitzer ist `pipewire`, auch wenn gar nichts läuft).
+PortAudio listet ein `hw:`-Gerät aber nur, wenn es sich zum Prüfen öffnen lässt.
+Folge: **`Steinberg UR22mkII: USB Audio (hw:2,0)` verschwindet komplett aus
+Vocaluxes Geräteliste.** Das sieht aus wie ein defektes Interface, ist aber nur
+das Profil. Reaper zu beenden reicht *nicht* — das Profil muss zurück auf
+`HiFi`, dann meldet der Status `closed` und das Gerät ist wieder da.
+
+Deshalb gibt es den Umschalter:
+
+| Modus | Profil | Reaper | in Vocaluxe zu wählen |
+|---|---|---|---|
+| `direct` | `HiFi` | wird beendet | `Steinberg UR22mkII: USB Audio (hw:2,0)`, Kanal 1 + 2 |
+| `daw` | `Pro Audio` | wird gestartet und verkabelt | `KaraokeVocals.monitor`, Kanal 1 + 2 |
+
+Das Skript setzt außerdem den Standard-Sink zurück aufs UR22, weil ein
+Profilwechsel ihn auf den Onboard-Chip fallen lässt. Nach `daw` gehört die
+Mikrofonverzögerung neu eingemessen, nach `direct` wieder zurückgestellt — die
+beiden Wege haben unterschiedliche Latenz.
+
+### Grenze der PulseAudio-Anbindung
+
+Reaper steht auf `linux_audio_mode=3`, das ist die PulseAudio-Anbindung, und
+die **kann nur Stereo** — `linux_audio_nch_out=4` in der `reaper.ini` wird
+ignoriert, es bleibt bei `output_FL`/`output_FR` (nachgemessen). Reapers
+Ausgang kann deshalb entweder an die PA *oder* an Vocaluxe gehen, nicht an
+beides.
+
+Solange das so ist, gilt:
+
+- Reaper füttert **KaraokeVocals**, nicht die PA.
+- Die Sänger hören sich über das **Direktmonitoring des UR22** (MIX-Regler am
+  Gerät), latenzfrei und an Reaper vorbei. Effekte auf der PA gibt es damit
+  nicht.
+- Der Songton geht direkt von Vocaluxe auf den Standard-Sink (UR22 Pro).
+
+**Auflösen lässt sich das nur mit `pipewire-jack`** (`apt install
+pipewire-jack`, dazu `qpwgraph`). Dann läuft Reaper als JACK-Client mit
+beliebig vielen Ports: Ausgänge 1/2 mit Hall auf die PA, Ausgänge 3/4 trocken
+auf KaraokeVocals, und `KaraokeSong` wird als dritte Spur mitgeschnitten. Reaper
+bringt JACK-Unterstützung mit (`JackIn`/`JackOut`, lädt `libjack.so.0`),
+`pipewire-jack` ersetzt genau diese Bibliothek.
+
+### Fallen
+
+1. **Der Vocaluxe-Weg muss trocken bleiben.** Hall auf dem Signal, das in den
+   PitchTracker geht, verwischt die Tonhöhen — der Nachhall ist noch der alte
+   Ton, während schon der nächste gesungen wird. Effekte gehören auf den
+   PA-Weg. Gate, EQ und ein moderater Kompressor sind unbedenklich.
+2. **Latenz doppelt rechnen.** Der Umweg verzögert Mikrofon *und* Songton.
+   Beides zusammen gleicht die Mikrofonverzögerung in Vocaluxe aus (0–500 ms,
+   20-ms-Schritte). Nach jedem Umbau einmal den Delay-Test laufen lassen.
+3. **`AutoAssignMics` greift hier nicht.** Es sucht Gerätenamen mit `Usb` oder
+   `Wireless` (`CConfig.cs:732`); `KaraokeVocals.monitor` passt nicht. Im
+   DAW-Betrieb werden die Spieler von Hand zugewiesen.
+4. **CPU im Auge behalten.** Vier Kerne ohne HT, Vocaluxe zieht mit Video schon
+   65 % eines Kerns. Reaper-Puffer bei 512 lassen (`linux_audio_bsize`), nicht
+   auf 64 herunterdrehen — Xruns im Refrain sind schlimmer als 20 ms mehr
+   Delay, die ohnehin wegkonfiguriert werden.
 
 ## Offen
 
 - **Zweites Mikrofon** noch nicht angeschlossen. Vorhanden ist bisher ein
-  t.bone MB 45 II, damit sind beide Kanäle einzeln geprüft: MIC 1 hart links
-  ergab 36 dB Trennung, MIC 2 hart rechts 41 dB. Sobald das zweite Mikrofon da
-  ist, beide GAIN-Regler auf ähnliche Pegel bringen, damit Vocaluxe die Spieler
-  gleich bewertet.
+  t.bone MB 45 II, damit sind beide Eingänge des UR22 einzeln geprüft. Eine
+  Kanaltrennung ist nicht einzustellen, die liefert die Hardware. Sobald das
+  zweite Mikrofon da ist, beide GAIN-Regler auf ähnliche Pegel bringen, damit
+  Vocaluxe die Spieler gleich bewertet.
 - **Pegel final einstellen**: beim *Singen* justieren, nicht beim Sprechen —
   Sprechen ist deutlich leiser und führt zu einer zu hohen Einstellung, die
   dann beim Singen clippt. Zielbereich 60–70 % Spitze.
@@ -617,5 +927,15 @@ anschlägt, wird hier justiert — nicht am Mixer.
   der PitchTracker.
 - **Erst danach** lohnt es, ffmpeg selbst mitzuliefern (Zahlen oben). Zwei
   ungeprüfte Dinge gleichzeitig auf die Bühne zu schieben, wäre der falsche Weg.
+- **Der Raumcode überlebt einen Relay-Neustart nicht.** Am 2026-08-24 sprang er
+  ohne Zutun von `707272` auf `535964`; die `RemoteAgentId` war unverändert und
+  Vocaluxe war nur neu gestartet worden. Damit liegt es an der Gegenseite: Der
+  Relay hält die Zuordnung `RemoteAgentId` → Raumcode nur im Speicher, ein
+  Container-Neustart oder Deploy von `karaoke.walter.berlin` vergibt also einen
+  neuen Code. Praktisch heißt das: ausgehängte QR-Codes und aufgeschriebene
+  Zahlen werden ungültig, ohne dass am Rechner etwas passiert ist. Zu beheben
+  wäre es in **`~/Vocaluxe-server`**, nicht in Vocaluxe — die Zuordnung müsste
+  auf die Platte statt nur in den Speicher. Bis dahin: den Code erst kurz vor
+  dem Verteilen ablesen, das QR-Popup zeigt immer den aktuellen Stand.
 - Theme-Videos (`BG_Video.mp4`, `IntroIn/Mid/Out.mp4`) fehlen im Repo, das Log
   meldet „Expect visual problems". Rein kosmetisch.
