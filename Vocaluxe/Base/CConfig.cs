@@ -228,7 +228,8 @@ namespace Vocaluxe.Base
 
             /// <summary>
             ///     Dial out to a relay so guests can reach the queue without being on this network.
-            ///     See Vocaluxe-server/README.md; the token is the one the relay was started with.
+            ///     See the README of byte55/vocaluxe-relay (cloned to ~/vocaluxe-relay); the token
+            ///     is the one the relay was started with.
             /// </summary>
             [DefaultValue(EOffOn.TR_CONFIG_OFF)]
             public EOffOn RemoteRelay;

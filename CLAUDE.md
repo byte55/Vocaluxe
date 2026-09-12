@@ -443,8 +443,14 @@ hereinkommende Gastanfragen gegen seinen **eigenen lokalen Webserver** aus. Dami
 sind Relay-Weg und lokaler Weg derselbe Code; es gibt keine zweite Implementierung,
 die auseinanderlaufen könnte. Portfreigaben und Zertifikate entfallen.
 
-Der Server liegt in **`~/Vocaluxe-server`** (Node, ohne Abhängigkeiten, Docker +
-Traefik). Aufbau, Protokoll und die Sicherheitsabwägung stehen in dessen README.
+Der Server liegt in **`~/vocaluxe-relay`** (Node, ohne Abhängigkeiten, Docker +
+Traefik), ein Klon von `byte55/vocaluxe-relay`. Aufbau, Protokoll und die
+Sicherheitsabwägung stehen in dessen README.
+
+**Dort wird von hier aus nichts geändert.** Das Repo dient dem Nachschlagen; der
+ausgerollte Stand kommt von dort, und wenn er neuer ist, holt ein `git pull` ihn
+her. Fällt bei der Fehlersuche etwas auf, das den Relay betrifft, gehört es dem
+Nutzer gemeldet — geändert und ausgerollt wird es an anderer Stelle.
 
 ```xml
 <RemoteRelay>TR_CONFIG_ON</RemoteRelay>
@@ -465,8 +471,8 @@ Traefik). Aufbau, Protokoll und die Sicherheitsabwägung stehen in dessen README
   ändern den Code also nicht** — und seit dem 2026-09-12 auch Neustarts des Relays
   nicht mehr: Der Server hält die Zuordnung `RemoteAgentId` → Raumcode inzwischen
   auf der Platte. Ausgehängte QR-Codes bleiben damit über einen Abend hinweg gültig.
-  **Achtung:** Der ausgerollte Relay ist dem Stand in `~/Vocaluxe-server` voraus —
-  dort liegt die Zuordnung im Quelltext noch im Arbeitsspeicher.
+  Nachzulesen ist das in `~/vocaluxe-relay` (`src/store.js`), wo der ausgerollte
+  Stand liegt.
 - **Das QR-Popup zeigt ausschließlich den Relay-Link.** Steht keine Verbindung,
   erscheint kein QR-Code, sondern der Grund im Klartext („Noch keine Verbindung
   zum Relay…", bzw. Token abgelehnt, Adresse fehlt, Server nicht gestartet).
