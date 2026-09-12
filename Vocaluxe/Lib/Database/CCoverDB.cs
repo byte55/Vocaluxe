@@ -30,6 +30,7 @@ namespace Vocaluxe.Lib.Database
     public class CCoverDB : CDatabaseBase
     {
         private SqliteTransaction _TransactionCover;
+        private SqliteCommand _LookupCommand;
 
         public CCoverDB(string filePath) : base(filePath) {}
 
@@ -42,6 +43,8 @@ namespace Vocaluxe.Lib.Database
 
                 if (_Version < 0)
                     return _CreateCoverDB();
+                if (_Version == CSettings.DatabaseCoverVersion)
+                    _CreateIndices();
                 if (_Version < CSettings.DatabaseCoverVersion)
                 {
                     // This database is a cache and nothing else - every entry can be rebuilt from the
@@ -60,6 +63,12 @@ namespace Vocaluxe.Lib.Database
             lock (_Mutex)
             {
                 _CommitCovers();
+
+                if (_LookupCommand != null)
+                {
+                    _LookupCommand.Dispose();
+                    _LookupCommand = null;
+                }
 
                 base.Close();
             }
@@ -83,57 +92,31 @@ namespace Vocaluxe.Lib.Database
             int cacheW = 0, cacheH = 0;
             byte[] compressed = null;
 
+            bool missingData = false;
             lock (_Mutex)
             {
                 //Double check here because we may have just closed our connection
                 if (_Connection == null)
                     return false;
-                using (var command = new SqliteCommand())
+                // One statement instead of two, prepared once instead of parsed per cover - this
+                // runs for every song in the library, under the lock, so both count.
+                SqliteCommand command = _GetLookupCommand();
+                command.Parameters["@path"].Value = coverPath;
+                using (SqliteDataReader reader = command.ExecuteReader())
                 {
-                    command.Connection = _Connection;
-                    // If we have an open transaction on this connection, all commands must use it.
-                    if (_TransactionCover != null)
-                        command.Transaction = _TransactionCover;
-                    command.CommandText = "SELECT id, width, height FROM Cover WHERE [Path] = @path";
-                    command.Parameters.Clear();
-                    command.Parameters.AddWithValue("@path", coverPath);
-
-                    SqliteDataReader reader = command.ExecuteReader();
-
-                    if (reader != null && reader.HasRows)
+                    if (reader.Read())
                     {
-                        reader.Read();
-                        int id = reader.GetInt32(0);
-                        int w = reader.GetInt32(1);
-                        int h = reader.GetInt32(2);
-                        reader.Close();
-
-                        command.CommandText = "SELECT Data FROM CoverData WHERE CoverID = @id";
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@id", id);
-                        reader = command.ExecuteReader();
-
-                        if (reader.HasRows)
-                        {
-                            reader.Read();
-                            compressed = _GetBytes(reader);
-                            reader.Dispose();
-                            reader = null;
-                            cacheId = id;
-                            cacheW = w;
-                            cacheH = h;
-                        }
+                        cacheId = reader.GetInt32(0);
+                        cacheW = reader.GetInt32(1);
+                        cacheH = reader.GetInt32(2);
+                        if (reader.IsDBNull(3))
+                            missingData = true;
                         else
-                        {
-                            command.CommandText = "DELETE FROM Cover WHERE id = @id";
-                            command.Parameters.Clear();
-                            command.Parameters.AddWithValue("@id", id);
-                            command.ExecuteNonQuery();
-                        }
+                            compressed = _GetBytes(reader, 3);
                     }
-                    if (reader != null)
-                        reader.Close();
                 }
+                if (missingData)
+                    _DeleteCover(cacheId);
             }
 
             if (compressed != null)
@@ -146,20 +129,7 @@ namespace Vocaluxe.Lib.Database
                 }
                 // Unreadable entry - drop it and load from the file below.
                 lock (_Mutex)
-                {
-                    if (_Connection != null)
-                    {
-                        using (var command = new SqliteCommand())
-                        {
-                            command.Connection = _Connection;
-                            if (_TransactionCover != null)
-                                command.Transaction = _TransactionCover;
-                            command.CommandText = "DELETE FROM Cover WHERE id = @id";
-                            command.Parameters.AddWithValue("@id", cacheId);
-                            command.ExecuteNonQuery();
-                        }
-                    }
-                }
+                    _DeleteCover(cacheId);
             }
 
             // At this point we do not have a mathing entry in the CoverDB (either no Data found and deleted or nothing at all)
@@ -266,6 +236,71 @@ namespace Vocaluxe.Lib.Database
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        ///     There were none. Looking a cover up by its path scanned the whole Cover table, and
+        ///     fetching its data scanned the whole of CoverData - which is the 39 MB of image data
+        ///     itself, once per song in the library. Cheap to add, and existing databases get them
+        ///     here rather than being thrown away.
+        /// </summary>
+        private void _CreateIndices()
+        {
+            try
+            {
+                using (var command = new SqliteCommand())
+                {
+                    command.Connection = _Connection;
+                    command.CommandText =
+                        "CREATE INDEX IF NOT EXISTS IX_Cover_Path ON Cover (Path);" +
+                        "CREATE INDEX IF NOT EXISTS IX_CoverData_CoverID ON CoverData (CoverID);";
+                    command.ExecuteNonQuery();
+                }
+            }
+            catch (Exception e)
+            {
+                CLog.Error(e, "Could not create the cover database indices");
+            }
+        }
+
+        /// <summary>
+        ///     The lookup used for every cover, prepared once. Recreated if the connection changed.
+        ///     You have to hold the mutex when calling this.
+        /// </summary>
+        private SqliteCommand _GetLookupCommand()
+        {
+            if (_LookupCommand != null && _LookupCommand.Connection == _Connection
+                && _LookupCommand.Transaction == _TransactionCover)
+                return _LookupCommand;
+
+            if (_LookupCommand != null)
+                _LookupCommand.Dispose();
+
+            _LookupCommand = new SqliteCommand(
+                "SELECT c.id, c.width, c.height, d.Data FROM Cover c " +
+                "LEFT JOIN CoverData d ON d.CoverID = c.id WHERE c.[Path] = @path", _Connection);
+            // Commands on a connection with an open transaction must carry it.
+            if (_TransactionCover != null)
+                _LookupCommand.Transaction = _TransactionCover;
+            _LookupCommand.Parameters.Add("@path", SqliteType.Text);
+            _LookupCommand.Prepare();
+            return _LookupCommand;
+        }
+
+        /// <summary>You have to hold the mutex when calling this.</summary>
+        private void _DeleteCover(int id)
+        {
+            if (_Connection == null || id < 0)
+                return;
+            using (var command = new SqliteCommand())
+            {
+                command.Connection = _Connection;
+                if (_TransactionCover != null)
+                    command.Transaction = _TransactionCover;
+                command.CommandText = "DELETE FROM Cover WHERE id = @id";
+                command.Parameters.AddWithValue("@id", id);
+                command.ExecuteNonQuery();
+            }
         }
 
         public void CommitCovers()
@@ -393,6 +428,7 @@ namespace Vocaluxe.Lib.Database
                                           "CoverID INTEGER NOT NULL, Data BLOB NOT NULL);";
                     command.ExecuteNonQuery();
                 }
+                _CreateIndices();
             }
             catch (Exception e)
             {
