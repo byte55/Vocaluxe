@@ -170,6 +170,12 @@ namespace Vocaluxe.Lib.Video.FFmpeg
                 return false;
             }
 
+            // Same reason as on the Acinerella side: swscale leaves the tail columns of a width that
+            // is not a multiple of its block size untouched, and av_malloc returns recycled memory.
+            // Without this the right edge of every video after the first shows scraps of the one
+            // before it.
+            new Span<byte>(_BgraBuffer, size).Clear();
+
             byte_ptrArray4 data = new byte_ptrArray4();
             int_array4 lineSizes = new int_array4();
             ffmpeg.av_image_fill_arrays(ref data, ref lineSizes, _BgraBuffer,

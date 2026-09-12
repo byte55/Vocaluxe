@@ -28,10 +28,10 @@ namespace Vocaluxe.Lib.FFmpeg
     ///     Finds the ffmpeg shared libraries and points FFmpeg.AutoGen at them.
     /// </summary>
     /// <remarks>
-    ///     Nothing is shipped with Vocaluxe: on Linux these come from the distribution. AutoGen wants
-    ///     a directory rather than letting the system loader do its job, so we look for the exact
-    ///     sonames it was generated against - a different major version would be an ABI mismatch, not
-    ///     something to paper over.
+    ///     Nothing is shipped with Vocaluxe: on Linux these come from the distribution, on macOS
+    ///     from Homebrew. AutoGen wants a directory rather than letting the system loader do its job,
+    ///     so we look for the exact sonames it was generated against - a different major version would
+    ///     be an ABI mismatch, not something to paper over.
     /// </remarks>
     static class CFFmpegLoader
     {
@@ -56,7 +56,7 @@ namespace Vocaluxe.Lib.FFmpeg
 
         private static bool _Locate()
         {
-            string expected = "libavformat.so." + ffmpeg.LibraryVersionMap["avformat"];
+            string expected = _SharedLibraryName("avformat");
 
             foreach (string dir in _Candidates())
             {
@@ -138,6 +138,17 @@ namespace Vocaluxe.Lib.FFmpeg
             ffmpeg.av_log_set_callback(_LogCallback);
         }
 
+        /// <summary>
+        ///     The file name to look for: a versioned soname on Linux, a versioned dylib on macOS.
+        ///     Same spelling FFmpeg.AutoGen's own loader uses, so finding the file means it can bind.
+        /// </summary>
+        private static string _SharedLibraryName(string library)
+        {
+            return RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                       ? "lib" + library + "." + ffmpeg.LibraryVersionMap[library] + ".dylib"
+                       : "lib" + library + ".so." + ffmpeg.LibraryVersionMap[library];
+        }
+
         private static IEnumerable<string> _Candidates()
         {
             // Anything the user set explicitly wins.
@@ -145,7 +156,9 @@ namespace Vocaluxe.Lib.FFmpeg
             if (!string.IsNullOrEmpty(configured))
                 yield return configured;
 
-            string ldPath = Environment.GetEnvironmentVariable("LD_LIBRARY_PATH");
+            // The dynamic loader's search path variable goes by a different name on macOS.
+            bool osx = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+            string ldPath = Environment.GetEnvironmentVariable(osx ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH");
             if (!string.IsNullOrEmpty(ldPath))
             {
                 foreach (string dir in ldPath.Split(Path.PathSeparator))
@@ -153,6 +166,19 @@ namespace Vocaluxe.Lib.FFmpeg
                     if (!string.IsNullOrEmpty(dir))
                         yield return dir;
                 }
+            }
+
+            if (osx)
+            {
+                // Homebrew, which is where a Mac gets ffmpeg from: /opt/homebrew on Apple Silicon,
+                // /usr/local on Intel. ffmpeg is not keg-only, so the versioned dylibs are symlinked
+                // into the prefix's lib directory; the opt/ffmpeg paths are the fallback for a
+                // keg-only install (e.g. a pinned version).
+                yield return "/opt/homebrew/lib";
+                yield return "/opt/homebrew/opt/ffmpeg/lib";
+                yield return "/usr/local/lib";
+                yield return "/usr/local/opt/ffmpeg/lib";
+                yield break;
             }
 
             // Debian/Ubuntu put them in a per-architecture directory, everyone else in lib64 or lib.

@@ -51,7 +51,6 @@ namespace Vocaluxe.Base.Server
         // ASP.NET Core (Kestrel) host for the browser remote control (S2; replaces the old WCF host).
         private static WebApplication _App;
         private static bool _Running;
-        private static string _Address = "";
         // Translation key for the reason the server is enabled but not running (e.g. the port is in
         // use); the UI translates it. Empty when running or when no specific reason is known.
         private static string _StatusKey = "";
@@ -139,7 +138,6 @@ namespace Vocaluxe.Base.Server
                 CWebQueueApi.MapEndpoints(_App);
                 CSongRequests.Load();
 
-                _Address = "http://" + Dns.GetHostName() + ":" + port + "/";
                 Start();
             }
             catch (Exception e)
@@ -160,7 +158,7 @@ namespace Vocaluxe.Base.Server
                 _App.Start();
                 _Running = true;
                 _StatusKey = "";
-                CLog.Information("Webserver running at " + _Address);
+                CLog.Information("Webserver running on port " + CConfig.Config.Server.ServerPort);
                 // Only after the local server is up: the agent serves guest requests by running
                 // them against it.
                 CRelayAgent.Start();
@@ -193,21 +191,23 @@ namespace Vocaluxe.Base.Server
             _Running = false;
         }
 
-        public static string GetServerAddress()
-        {
-            return _Address;
-        }
-
         /// <summary>
-        ///     The address to put in front of guests: the relay when one is connected, otherwise this
-        ///     machine on the local network. The relay is preferred because it is the one that works
-        ///     for someone who is not on this network - which is the whole point of having it.
+        ///     The address to put in front of guests - the relay, and nothing else. Empty while no
+        ///     relay is connected.
         /// </summary>
+        /// <remarks>
+        ///     There used to be a fallback to this machine's own address, built from
+        ///     <see cref="Dns.GetHostName" />. It was worse than nothing: the host name resolves only
+        ///     for someone on this network whose resolver knows it (here it resolves to IPv6 only,
+        ///     while the server listens on IPv4), and at a venue the machine is a guest on a strange
+        ///     network where the name means nothing at all. A QR code that leads nowhere is harder to
+        ///     deal with at a party than an honest "not connected".
+        /// </remarks>
         public static string GetGuestAddress()
         {
-            if (CRelayAgent.IsConnected)
-                return (CConfig.Config.Server.RemoteRelayUrl ?? "").Trim().TrimEnd('/') + "/r/" + CRelayAgent.RoomCode + "/";
-            return _Address;
+            if (!CRelayAgent.IsConnected)
+                return "";
+            return (CConfig.Config.Server.RemoteRelayUrl ?? "").Trim().TrimEnd('/') + "/r/" + CRelayAgent.RoomCode + "/";
         }
 
         /// <summary>The room code guests type on the relay, or an empty string when there is none.</summary>

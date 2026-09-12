@@ -230,6 +230,25 @@ anderer Build schlimmstenfalls 3 daneben, im Mittel 0,52 von 255. Der Test prüf
 deshalb den Abstand (Maximum 8, Mittel 1), was einen vertauschten Rot/Blau-Kanal
 weiterhin sofort auffliegen lässt, weil der das Mittel in die Dutzende treibt.
 
+**Und genau dieser Test hat einen echten Fehler gefunden — in beiden Backends.**
+swscale rechnet in Blöcken und rührt die letzten Spalten einer Breite, die keine
+Blockgrenze trifft, **gar nicht an**. Bei 854 Pixeln sind das die letzten sechs.
+Was dort steht, ist schlicht der vorherige Inhalt des Speichers: `av_malloc`
+liefert beim ersten Mal genullte Seiten, später recycelte. Sichtbar wäre das als
+**sechs Pixel breiter Streifen mit Resten des vorigen Videos am rechten Rand, ab
+dem zweiten Song einer Sitzung**.
+
+Gemessen an `257ers - Holland.mp4` (854×480): frischer Prozess null abweichende
+Bytes, nach einem vorher gelaufenen Dekoder rund 5000 — mal hatte die eine Seite
+Müll, mal die andere. Behoben ist es, indem der Zielpuffer nach dem Reservieren
+**einmal genullt** wird, in `acinerella.c` wie in `CFFmpegStreamDecoder`.
+
+Die Lehre für den Test selbst: Er war monatelang grün, **weil NUnit die Tests in
+wechselnder Reihenfolge ausführt**. Lief der Pixelvergleich zuerst, war der
+Speicher noch sauber. Ein Test, der von der Reihenfolge abhängt, verschweigt
+einen Fehler, statt ihn zu melden — beim Debuggen also immer auch einzeln laufen
+lassen (`--filter "Name=…"`) und mit der ganzen Fixture vergleichen.
+
 Kein SDL2 — das taucht nur noch in Kommentaren auf.
 
 ## Lokale Fixes und wo es weh tut
@@ -440,8 +459,14 @@ Traefik). Aufbau, Protokoll und die Sicherheitsabwägung stehen in dessen README
   Start einmal erzeugt) und bekommt seinen Raum zurück. **Neustarts von Vocaluxe
   ändern den Code also nicht**, ein Neustart des Relays schon — dessen Zustand liegt
   nur im Speicher.
-- **Das QR-Popup zeigt den Relay-Link**, sobald eine Verbindung steht, sonst wie
-  bisher die lokale Adresse.
+- **Das QR-Popup zeigt ausschließlich den Relay-Link.** Steht keine Verbindung,
+  erscheint kein QR-Code, sondern der Grund im Klartext („Noch keine Verbindung
+  zum Relay…", bzw. Token abgelehnt, Adresse fehlt, Server nicht gestartet).
+  Früher fiel es auf die lokale Adresse zurück, gebaut aus `Dns.GetHostName()` —
+  das war schlechter als nichts: Der Rechnername löst hier **nur auf IPv6** auf,
+  während der Server auf IPv4 lauscht, und im fremden Netz am Veranstaltungsort
+  bedeutet er für Gästetelefone ohnehin nichts. Ein QR-Code, der ins Leere führt,
+  kostet auf einer Feier mehr Zeit als ein ehrliches „nicht verbunden".
 - **Die Fernbedienung ist für Gäste gesperrt** (`RELAY_BLOCKED_PREFIXES`), sie
   schiebt Tastendrücke ins Spiel und gehört nicht ins offene Internet.
 - **Der Ereignisstrom wird wörtlich durchgereicht.** Die Seite liest die Warteliste

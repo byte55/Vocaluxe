@@ -2,7 +2,7 @@
 <Screen xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Informations>
     <ScreenName>ScreenOptionsRecord</ScreenName>
-    <ScreenVersion>5</ScreenVersion>
+    <ScreenVersion>6</ScreenVersion>
   </Informations>
   <Backgrounds>
     <Background Name="Background1">
@@ -215,6 +215,20 @@
       <Style>Bold</Style>
       <Font>Outline</Font>
       <Text>TR_SCREENORECORD_MIC_DELAY</Text>
+    </Text>
+    <Text Name="TextAmplifyLabel">
+      <X>112.5</X>
+      <Y>1000.5</Y>
+      <Z>0</Z>
+      <H>40.5</H>
+      <MaxW>0</MaxW>
+      <Color Name="TextColor" />
+      <SelColor Name="TextSelColor" />
+      <Align>Left</Align>
+      <ResizeAlign>Center</ResizeAlign>
+      <Style>Bold</Style>
+      <Font>Outline</Font>
+      <Text>TR_SCREENORECORD_MIC_AMPLIFY</Text>
     </Text>
     <Text Name="TextWarning">
       <X>960</X>
@@ -790,6 +804,48 @@
       <RectArrowRight>
         <X>1755</X>
         <Y>247.5</Y>
+        <W>60</W>
+        <H>60</H>
+        <Z>0</Z>
+      </RectArrowRight>
+      <Color Name="SelectSlideColor" />
+      <SelColor Name="SelectSlideSelColor" />
+      <ArrowColor Name="ArrowColor" />
+      <ArrowSelColor Name="ArrowSelColor" />
+      <TextColor Name="TextColorAlpha" />
+      <TextSelColor Name="TextSelColor" />
+      <TextH>40.5</TextH>
+      <TextRelativeX>75</TextRelativeX>
+      <TextRelativeY>0</TextRelativeY>
+      <TextMaxW>180</TextMaxW>
+      <TextFont>Outline</TextFont>
+      <TextStyle>Bold</TextStyle>
+      <NumVisible>5</NumVisible>
+    </SelectSlide>
+    <SelectSlide Name="SelectSlideAmplify">
+      <Skin />
+      <SkinArrowLeft>SelectSlideArrowLeft</SkinArrowLeft>
+      <SkinArrowRight>SelectSlideArrowRight</SkinArrowRight>
+      <SkinSelected>SelectSlide</SkinSelected>
+      <SkinArrowLeftSelected>SelectSlideArrowLeft</SkinArrowLeftSelected>
+      <SkinArrowRightSelected>SelectSlideArrowRight</SkinArrowRightSelected>
+      <Rect>
+        <X>750</X>
+        <Y>990</Y>
+        <W>1072.5</W>
+        <H>75</H>
+        <Z>0</Z>
+      </Rect>
+      <RectArrowLeft>
+        <X>757.5</X>
+        <Y>997.5</Y>
+        <W>60</W>
+        <H>60</H>
+        <Z>0</Z>
+      </RectArrowLeft>
+      <RectArrowRight>
+        <X>1755</X>
+        <Y>997.5</Y>
         <W>60</W>
         <H>60</H>
         <Z>0</Z>

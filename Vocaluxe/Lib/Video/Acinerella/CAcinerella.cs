@@ -194,7 +194,10 @@ namespace Vocaluxe.Lib.Video.Acinerella
         private const string _AcDll = "acinerella.dll";
 #endif
 
-#if LINUX
+// MACOS implies LINUX (see Vocaluxe.csproj), so it has to be tested first.
+#if MACOS
+        private const string _AcDll = "libacinerella.dylib";
+#elif LINUX
         private const string _AcDll = "libacinerella.so";
 #endif
 #endif
@@ -204,7 +207,10 @@ namespace Vocaluxe.Lib.Video.Acinerella
         private const string _AcDll = "acinerella.dll";
 #endif
 
-#if LINUX
+// MACOS implies LINUX (see Vocaluxe.csproj), so it has to be tested first.
+#if MACOS
+        private const string _AcDll = "libacinerella.dylib";
+#elif LINUX
         private const string _AcDll = "libacinerella.so";
 #endif
 #endif

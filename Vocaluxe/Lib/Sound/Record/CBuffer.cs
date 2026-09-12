@@ -18,6 +18,7 @@
 //#define TEST_PITCH
 
 using System;
+using Vocaluxe.Base;
 using Vocaluxe.Lib.Sound.Record.PitchTracker;
 
 namespace Vocaluxe.Lib.Sound.Record
@@ -87,12 +88,39 @@ namespace Vocaluxe.Lib.Sound.Record
         public void ProcessNewBuffer(byte[] buffer)
         {
             // apply software boost
-            //BoostBuffer(Buffer, BufferSize);
+            _BoostBuffer(buffer);
 
             // voice passthrough (send data to playback-device)
             //if (assigned(fVoiceStream)) then
             //fVoiceStream.WriteData(Buffer, BufferSize);
             _PitchTracker.Input(buffer);
+        }
+
+        /// <summary>
+        ///     Amplifies the Int16 samples in place by CConfig.Config.Record.MicAmplify dB.
+        ///     Needed when the mixer cannot be turned up any further without feedback:
+        ///     the analog gain stays low and the level is made up here instead.
+        ///     Saturates rather than wrapping around - an overdriven sample must clip,
+        ///     not flip sign, or the pitch detection sees garbage.
+        /// </summary>
+        private static void _BoostBuffer(byte[] buffer)
+        {
+            int db = CConfig.Config.Record.MicAmplify;
+            if (db <= 0)
+                return;
+
+            float factor = (float)Math.Pow(10.0, db / 20.0);
+            for (int i = 0; i + 1 < buffer.Length; i += 2)
+            {
+                int sample = (short)(buffer[i] | (buffer[i + 1] << 8));
+                sample = (int)(sample * factor);
+                if (sample > short.MaxValue)
+                    sample = short.MaxValue;
+                else if (sample < short.MinValue)
+                    sample = short.MinValue;
+                buffer[i] = (byte)(sample & 0xFF);
+                buffer[i + 1] = (byte)((sample >> 8) & 0xFF);
+            }
         }
 
         public void AnalyzeBuffer()

@@ -56,23 +56,43 @@ namespace Vocaluxe.Screens
         public override void OnShow()
         {
             base.OnShow();
+            // Only ever the relay address: guests reach the queue through it, and it is the one
+            // address that works no matter whose network the machine is standing on tonight.
             string address = CVocaluxeServer.GetGuestAddress();
+            bool haveAddress = !string.IsNullOrEmpty(address);
+
             if (_QRServerAddress == null || _QRAddress != address)
             {
                 _QRAddress = address;
-                _GenerateQRs();
+                _QRServerAddress = null;
+                if (haveAddress)
+                    _GenerateQRs();
                 _Statics[_StaticQRServer].Texture = _QRServerAddress;
                 _Texts[_TextServerAddress].Text = address;
             }
-            _Texts[_TextServerAddress].Visible = CVocaluxeServer.IsServerRunning();
-            _Statics[_StaticQRServer].Visible = CVocaluxeServer.IsServerRunning();
-            _Texts[_TextServerNotRunning].Visible = !CVocaluxeServer.IsServerRunning();
+            _Texts[_TextServerAddress].Visible = haveAddress;
+            _Statics[_StaticQRServer].Visible = haveAddress;
+            _Texts[_TextServerNotRunning].Visible = !haveAddress;
 
-            // When the server is enabled but failed to start, show the (translated) reason - e.g.
-            // "port in use" - instead of the generic "not running" text.
-            string statusKey = CVocaluxeServer.GetStatusKey();
-            if (!CVocaluxeServer.IsServerRunning() && !string.IsNullOrEmpty(statusKey))
-                _Texts[_TextServerNotRunning].Text = CLanguage.Translate(statusKey).Replace("%d", CConfig.Config.Server.ServerPort.ToString());
+            // Nothing to show a guest. Say which of the two reasons it is: the local server never
+            // came up (with the actual cause, e.g. "port in use"), or it runs but the relay is not
+            // connected - the usual case being that the relay is simply unreachable right now.
+            if (!haveAddress)
+            {
+                string statusKey = CVocaluxeServer.GetStatusKey();
+                if (!CVocaluxeServer.IsServerRunning())
+                {
+                    _Texts[_TextServerNotRunning].Text = string.IsNullOrEmpty(statusKey)
+                        ? "TR_SCREENPSERVERQR_NOTRUNNING"
+                        : CLanguage.Translate(statusKey).Replace("%d", CConfig.Config.Server.ServerPort.ToString());
+                }
+                else
+                {
+                    string relayError = CRelayAgent.ErrorText;
+                    _Texts[_TextServerNotRunning].Text = CLanguage.Translate(
+                        string.IsNullOrEmpty(relayError) ? "TR_SCREENPSERVERQR_RELAYNOTCONNECTED" : relayError);
+                }
+            }
         }
 
         public override bool HandleMouse(SMouseEvent mouseEvent)

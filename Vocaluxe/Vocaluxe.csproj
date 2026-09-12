@@ -16,14 +16,21 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <!-- One cross-platform codebase: OpenGL everywhere (OpenTK 4) + PortAudio, no WinForms/Direct3D.
-         The WIN/LINUX symbol is chosen per build OS so the same sources compile correctly on each
-         platform. ARCH_X64 selects the 64-bit native-interop paths. -->
-    <DefineConstants Condition="$([MSBuild]::IsOSPlatform('Windows'))">WIN;ARCH_X64</DefineConstants>
-    <DefineConstants Condition="!$([MSBuild]::IsOSPlatform('Windows'))">LINUX;ARCH_X64</DefineConstants>
+         The WIN/LINUX symbol follows the *target* platform: with -r <rid> that is the RID, without
+         one the build host. Deriving it from the host alone would hand a cross-publish
+         (`dotnet publish -r osx-arm64` on Linux) the host's symbols and silently compile the Linux-only
+         paths into a macOS build. ARCH_X64 selects the 64-bit native-interop paths (any 64-bit CPU,
+         arm64 included - the other branch is 32-bit). -->
+    <_VocaluxeTargetsWindows Condition="'$(RuntimeIdentifier)' == ''">$([MSBuild]::IsOSPlatform('Windows'))</_VocaluxeTargetsWindows>
+    <_VocaluxeTargetsWindows Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier.StartsWith('win'))</_VocaluxeTargetsWindows>
+    <_VocaluxeTargetsOSX Condition="'$(RuntimeIdentifier)' == ''">$([MSBuild]::IsOSPlatform('OSX'))</_VocaluxeTargetsOSX>
+    <_VocaluxeTargetsOSX Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier.StartsWith('osx'))</_VocaluxeTargetsOSX>
+    <DefineConstants Condition="'$(_VocaluxeTargetsWindows)' == 'true'">WIN;ARCH_X64</DefineConstants>
+    <DefineConstants Condition="'$(_VocaluxeTargetsWindows)' != 'true'">LINUX;ARCH_X64</DefineConstants>
     <!-- macOS is a non-Windows platform, so it also gets LINUX (the shared Unix/OpenGL/PortAudio
          paths). MACOS is defined additionally so genuinely Linux-only code (V4L2) can opt out with
          '#if LINUX && !MACOS' and macOS-specific bits can use '#if MACOS'. -->
-    <DefineConstants Condition="$([MSBuild]::IsOSPlatform('OSX'))">$(DefineConstants);MACOS</DefineConstants>
+    <DefineConstants Condition="'$(_VocaluxeTargetsOSX)' == 'true'">$(DefineConstants);MACOS</DefineConstants>
     <!-- NU1701: Pakete ohne net10.0-Ziel. Alles Weitere kam aus dem Port und ist inzwischen
          gegenstandslos: der Lärm stammte aus Community.CsharpSqlite und ist dort unterdrückt. -->
     <NoWarn>$(NoWarn);NU1701</NoWarn>
@@ -51,9 +58,11 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
-    <!-- macOS publishes need the SkiaSharp dylib from the macOS native-asset package; only pulled in
-         when building on/for macOS so the Linux/Windows builds are unaffected. -->
-    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="3.119.4" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+    <!-- macOS publishes need the SkiaSharp dylib from the macOS native-asset package. Referenced
+         unconditionally, like the Linux one: NuGet only ever copies the assets matching the target
+         RID, so an osx publish carries no .so and a linux publish no .dylib (verified). A condition
+         on the build host would leave a cross-publish without the dylib. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="3.119.4" />
     <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
     <!-- GstSharp removed: ships net45 assemblies only, unusable on .NET 10 (see S3).
          TODO(linux-port): the native PortAudio library (libportaudio) is required at runtime. -->

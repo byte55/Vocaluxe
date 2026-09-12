@@ -127,6 +127,7 @@
       <Channel>0</Channel>
     </MicConfig>
     <MicDelay>200</MicDelay>
+    <MicAmplify>0</MicAmplify>
   </Record>
   <Server>
     <ServerActive>TR_CONFIG_OFF</ServerActive>

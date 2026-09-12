@@ -29,7 +29,7 @@ namespace Vocaluxe.Screens
         // Version number for theme files. Increment it, if you've changed something on the theme files!
         protected override int _ScreenVersion
         {
-            get { return 5; }
+            get { return 6; }
         }
 
         private const string _SelectSlideRecordDevices = "SelectSlideRecordDevices";
@@ -37,6 +37,7 @@ namespace Vocaluxe.Screens
         private readonly string[] _SelectSlideRecordPlayer = { "SelectSlideRecordPlayer1", "SelectSlideRecordPlayer2", "SelectSlideRecordPlayer3", "SelectSlideRecordPlayer4", "SelectSlideRecordPlayer5", "SelectSlideRecordPlayer6" };
 
         private const string _SelectSlideDelay = "SelectSlideDelay";
+        private const string _SelectSlideAmplify = "SelectSlideAmplify";
 
         private const string _StaticWarning = "StaticWarning";
         private const string _TextWarning = "TextWarning";
@@ -84,7 +85,7 @@ namespace Vocaluxe.Screens
 
             _ThemeTexts = new string[] {_TextWarning, _TextPlayer[0], _TextPlayer[1], _TextPlayer[2], _TextPlayer[3], _TextPlayer[4], _TextPlayer[5], _TextDelayPlayer[0], _TextDelayPlayer[1], _TextDelayPlayer[2], _TextDelayPlayer[3], _TextDelayPlayer[4], _TextDelayPlayer[5] };
             _ThemeButtons = new string[] {_ButtonExit, _ButtonDelayTest};
-            _ThemeSelectSlides = new string[] {_SelectSlideRecordDevices, _SelectSlideRecordPlayer[0], _SelectSlideRecordPlayer[1], _SelectSlideRecordPlayer[2], _SelectSlideRecordPlayer[3], _SelectSlideRecordPlayer[4], _SelectSlideRecordPlayer[5], _SelectSlideDelay };
+            _ThemeSelectSlides = new string[] {_SelectSlideRecordDevices, _SelectSlideRecordPlayer[0], _SelectSlideRecordPlayer[1], _SelectSlideRecordPlayer[2], _SelectSlideRecordPlayer[3], _SelectSlideRecordPlayer[4], _SelectSlideRecordPlayer[5], _SelectSlideDelay, _SelectSlideAmplify };
             _ThemeEqualizers = new string[] {_EqualizerPlayer[0], _EqualizerPlayer[1], _EqualizerPlayer[2], _EqualizerPlayer[3], _EqualizerPlayer[4], _EqualizerPlayer[5]};
         }
 
@@ -94,6 +95,10 @@ namespace Vocaluxe.Screens
 
             for (int i = 0; i < 26; i++)
                 _SelectSlides[_SelectSlideDelay].AddValue((i * 20) + " ms");
+
+            // 0..30 dB in 1-dB-Schritten; Index == dB-Wert
+            for (int i = 0; i <= 30; i++)
+                _SelectSlides[_SelectSlideAmplify].AddValue(i + " dB");
 
             _ChannelEnergy = new float[_StaticEnergyPlayer.Length];
 
@@ -265,6 +270,7 @@ namespace Vocaluxe.Screens
             _DelayTest.Reset();
 
             _SelectSlides[_SelectSlideDelay].Selection = CConfig.Config.Record.MicDelay / 20;
+            _SelectSlides[_SelectSlideAmplify].Selection = CConfig.Config.Record.MicAmplify;
         }
 
         public override void OnShowFinish()
@@ -312,6 +318,12 @@ namespace Vocaluxe.Screens
         private void _SaveDelayConfig()
         {
             CConfig.Config.Record.MicDelay = _SelectSlides[_SelectSlideDelay].Selection * 20;
+            CConfig.SaveConfig();
+        }
+
+        private void _SaveAmplifyConfig()
+        {
+            CConfig.Config.Record.MicAmplify = _SelectSlides[_SelectSlideAmplify].Selection;
             CConfig.SaveConfig();
         }
 
@@ -375,6 +387,9 @@ namespace Vocaluxe.Screens
 
             if (_SelectSlides[_SelectSlideDelay].Selected)
                 _SaveDelayConfig();
+
+            if (_SelectSlides[_SelectSlideAmplify].Selected)
+                _SaveAmplifyConfig();
         }
 
         private void _UpdateChannels()

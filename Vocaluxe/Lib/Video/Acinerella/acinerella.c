@@ -772,6 +772,15 @@ void *ac_create_video_decoder(lp_ac_instance pacInstance,
     pDecoder->decoder.pBuffer =
         (uint8_t *)av_malloc(pDecoder->decoder.buffer_size);
 
+    // swscale works in blocks and never touches the tail columns of a width that is not a multiple
+    // of the block size - 854 here, so the last six stay as they were. av_malloc hands back recycled
+    // memory, so those columns show whatever an earlier frame left behind: black in a fresh process,
+    // scraps of the previous video once one has played. Measured against the ffmpeg backend, both
+    // agreed on the first video of a run and differed on every one after it. Zero it once and the
+    // strip is black for good.
+    if (pDecoder->decoder.pBuffer)
+        memset(pDecoder->decoder.pBuffer, 0, pDecoder->decoder.buffer_size);
+
     // Link decoder to buffer
     if(av_image_fill_arrays(pDecoder->pFrameRGB->data,
                     pDecoder->pFrameRGB->linesize,
@@ -909,7 +918,12 @@ int ac_decode_video_package(lp_ac_package pPackage,
     pDecoder->pCodecCtx->height, pDecoder->pCodecCtx->pix_fmt,
     pDecoder->pCodecCtx->width, pDecoder->pCodecCtx->height,
     convert_pix_format(pDecoder->decoder.pacInstance->output_format),
-                SWS_BICUBIC, NULL, NULL, NULL)) < 0)
+    // Bilinear, not bicubic: nothing is being scaled here, the size stays the same and only the
+    // pixel format changes, so the filter never gets to interpolate anything - and bilinear is the
+    // cheaper of the two. The direct ffmpeg backend has always used it; now both agree, which also
+    // keeps the two-backend comparison in CVideoDecoderTest honest. (This is not what caused the
+    // black strip on the right edge - that was the untouched tail of the buffer, see below.)
+                SWS_BILINEAR, NULL, NULL, NULL)) < 0)
     {
         return -3;
     }

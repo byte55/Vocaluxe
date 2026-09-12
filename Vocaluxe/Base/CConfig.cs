@@ -1,4 +1,4 @@
-#region license
+﻿#region license
 // This file is part of Vocaluxe.
 // 
 // Vocaluxe is free software: you can redistribute it and/or modify
@@ -211,6 +211,8 @@ namespace Vocaluxe.Base
             public SMicConfig[] MicConfig;
             [DefaultValue(200)]
             public int MicDelay; //[ms]
+            [DefaultValue(0)]
+            public int MicAmplify; //[dB]
         }
 
         public struct SConfigServer
@@ -456,6 +458,10 @@ namespace Vocaluxe.Base
 
             Array.Resize(ref Config.Record.MicConfig, CSettings.MaxNumPlayer);
             Config.Record.MicDelay = (int)(20 * Math.Round(Config.Record.MicDelay / 20.0));
+            if (Config.Record.MicAmplify < 0)
+                Config.Record.MicAmplify = 0;
+            else if (Config.Record.MicAmplify > 30)
+                Config.Record.MicAmplify = 30;
 
             if (!Config.Server.ServerPort.IsInRange(1, 65535))
                 Config.Server.ServerPort = 3000;
@@ -596,6 +602,8 @@ namespace Vocaluxe.Base
                     return "Show backgroundmusic videos as background: " + CHelper.ListStrings(Enum.GetNames(typeof(EOffOn)));
                 case "WebcamLib":
                     return "WebcamLib: " + CHelper.ListStrings(Enum.GetNames(typeof(EWebcamLib)));
+                case "MicAmplify":
+                    return "Amplify mic input by this many dB before pitch detection. 0 = off [0..30]";
                 case "MicDelay":
                     return "Mic delay in ms. 0, 20, 40, 60 ... 500";
                 case "ServerActive":

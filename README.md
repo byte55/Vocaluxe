@@ -43,9 +43,10 @@ Check out [milestones](https://github.com/Vocaluxe/Vocaluxe/milestones) or our [
 Build guides live in the repository:
 - [Build on Windows](HowToBuildWin.md)
 - [Build on Linux](HowToBuildLinux.md)
+- [Build on macOS](HowToBuildMac.md) — experimental, not yet built on a Mac
 
-Both use the **.NET 10 SDK** (`dotnet build` / `dotnet publish`); see each guide for the per-OS native
-helper libraries.
+All three use the **.NET 10 SDK** (`dotnet build` / `dotnet publish`); see each guide for the per-OS
+native helper libraries.
 
 ### Submit your change
 Upload your changes to your fork and open a new pull request.
