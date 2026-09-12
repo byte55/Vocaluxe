@@ -452,8 +452,13 @@ Traefik). Aufbau, Protokoll und die Sicherheitsabwägung stehen in dessen README
 <RemoteRelayToken>…</RemoteRelayToken>
 ```
 
-- **Der lokale Server bleibt.** Das Relay kommt daneben, nicht an seine Stelle —
-  fällt es aus, bedient die Anlage weiter jeden, der im Netz ist.
+- **Der Server lauscht nur noch auf `127.0.0.1`.** Gäste kommen ausschließlich über
+  das Relay herein, und der Relay-Agent führt ihre Anfragen gegen genau diesen
+  Loopback aus — im Netz muss also kein Port offen stehen. Am Veranstaltungsort ist
+  die Anlage Gast in einem fremden Netz, und ein offener Port wäre dort nur ein
+  Risiko. **Fällt das Relay aus, gibt es keinen Weg mehr über das WLAN**; bedient
+  wird dann an der Tastatur vor dem Bildschirm. Wer den alten Zustand will, stellt
+  `UseUrls` in `CVocaluxeServer.Init` auf `0.0.0.0` zurück.
 - **Der Raumcode wird ausschließlich vom Relay vergeben**, sechs Ziffern. Vocaluxe
   speichert ihn nicht, sondern weist sich mit `RemoteAgentId` aus (wird beim ersten
   Start einmal erzeugt) und bekommt seinen Raum zurück. **Neustarts von Vocaluxe

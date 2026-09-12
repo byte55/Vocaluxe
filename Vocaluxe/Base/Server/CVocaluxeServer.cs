@@ -110,7 +110,12 @@ namespace Vocaluxe.Base.Server
                 // stream that by design never ends on its own. With the default 30 seconds, quitting
                 // the game just sat there as long as a single phone still had the page open.
                 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(2));
-                builder.WebHost.UseUrls("http://0.0.0.0:" + port + "/");
+                // Loopback only. Guests reach the queue through the relay, and the relay agent runs
+                // their requests against this server on 127.0.0.1 - so nothing needs the port to be
+                // open on the network. At a venue the machine is a guest on somebody else's network,
+                // where an open port is a liability and the host name in a QR code means nothing
+                // anyway. If the relay is down, the fallback is the keyboard in front of the screen.
+                builder.WebHost.UseUrls("http://127.0.0.1:" + port + "/");
                 // The REST API reads request bodies and writes responses synchronously via
                 // DataContractJsonSerializer. Kestrel disallows synchronous I/O by default, which made
                 // every POST with a body (create profile, upload photo, edit playlist) fail with HTTP

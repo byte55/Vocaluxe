@@ -288,7 +288,7 @@
   <string name="TR_SCREENOVIDEOADJUSTMENTS_BOTTOMLEFT">Unten links</string>
   <string name="TR_SCREENOVIDEOADJUSTMENTS_BOTTOMRIGHT">Unten rechts</string>
   <string name="TR_SCREENPVOLUMECONTROL_VOLUME">Lautstärke</string>
-  <string name="TR_SCREENPSERVERQR_ADDRESS">Serveradresse</string>
+  <string name="TR_SCREENPSERVERQR_ADDRESS">Songwünsche</string>
   <string name="TR_SCREENPSERVERQR_NOTRUNNING">Server läuft derzeit nicht. Bitte aktiviere ihn und starte das Spiel neu!</string>
   <string name="TR_SCREENPSERVERQR_RELAYNOTCONNECTED">Noch keine Verbindung zum Relay. Sobald sie steht, erscheint hier der QR-Code.</string>
   <string name="TR_SCREENPSERVERQR_RELAYNOTCONFIGURED">Relay ist eingeschaltet, aber Adresse oder Token fehlen in den Server-Optionen.</string>

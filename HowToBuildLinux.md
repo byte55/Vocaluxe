@@ -61,7 +61,9 @@ binaries.
 
 ## Notes / current limitations
 
-* The browser remote-control **webserver is disabled** on this build (the old WCF
-  implementation is gone; an ASP.NET Core replacement is planned).
+* The webserver is **an ASP.NET Core one** (Kestrel) and carries the song-request
+  queue guests use from their phones: switch it on with `ServerActive` in
+  `Config.xml` or under Options → Server. The old WCF implementation is gone for
+  good, along with the endpoints that came with it. See [docs/web-queue.md](docs/web-queue.md).
 * Gamepad (OpenTK 1.x) input is stubbed; Wiimote needs `libhidapi`.
 * Windows builds are kept working by design but are not verified in this port.

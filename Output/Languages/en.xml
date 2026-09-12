@@ -288,7 +288,7 @@
   <string name="TR_SCREENOVIDEOADJUSTMENTS_BOTTOMLEFT">Bottom left</string>
   <string name="TR_SCREENOVIDEOADJUSTMENTS_BOTTOMRIGHT">Bottom right</string>
   <string name="TR_SCREENPVOLUMECONTROL_VOLUME">Volume</string>
-  <string name="TR_SCREENPSERVERQR_ADDRESS">Server address</string>
+  <string name="TR_SCREENPSERVERQR_ADDRESS">Song requests</string>
   <string name="TR_SCREENPSERVERQR_NOTRUNNING">Server is not running. Please activate it and restart the game!</string>
   <string name="TR_SCREENPSERVERQR_RELAYNOTCONNECTED">Not connected to the relay yet. The QR code appears as soon as it is.</string>
   <string name="TR_SCREENPSERVERQR_RELAYNOTCONFIGURED">Relay is switched on, but its address or token is missing in the server options.</string>
