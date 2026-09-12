@@ -1,4 +1,4 @@
-#region license
+﻿#region license
 // This file is part of Vocaluxe.
 // 
 // Vocaluxe is free software: you can redistribute it and/or modify
@@ -289,6 +289,89 @@ namespace VocaluxeLib.Songs
             return loader.ReadNotes();
         }
 
+        private readonly object _NotesLock = new object();
+
+        /// <summary>
+        ///     Reads the notes if they are not in memory yet. Everything that actually looks at notes -
+        ///     singing, scoring, the lyrics - goes through the song queue, and the queue calls this.
+        ///     The song list itself never needs them.
+        /// </summary>
+        public bool EnsureNotesLoaded()
+        {
+            if (NotesLoaded)
+                return true;
+            lock (_NotesLock)
+            {
+                if (NotesLoaded)
+                    return true;
+                return LoadNotes();
+            }
+        }
+
+        /// <summary>
+        ///     What reading the notes told us, for the cache. Only meaningful once they are loaded.
+        /// </summary>
+        public SSongInfo GetNoteInfo(long mTime, long size)
+        {
+            var names = new string[Notes.VoiceCount];
+            for (int i = 0; i < Notes.VoiceCount; i++)
+                names[i] = Notes.VoiceNames.IsSet(i) ? Notes.VoiceNames[i] : null;
+
+            return new SSongInfo
+                {
+                    MTime = mTime,
+                    Size = size,
+                    VoiceCount = Notes.VoiceCount,
+                    VoiceNames = names,
+                    IsRap = IsRap,
+                    MedleySource = (int)Medley.Source,
+                    MedleyStart = Medley.StartBeat,
+                    MedleyEnd = Medley.EndBeat,
+                    MedleyFadeIn = Medley.FadeInTime,
+                    MedleyFadeOut = Medley.FadeOutTime,
+                    PreviewSource = (int)Preview.Source,
+                    PreviewStart = Preview.StartTime,
+                    ShortEndSource = (int)ShortEnd.Source,
+                    ShortEndBeat = ShortEnd.EndBeat
+                };
+        }
+
+        /// <summary>
+        ///     Puts a cached entry back on the song, without reading a single note.
+        /// </summary>
+        /// <remarks>
+        ///     The voices are created empty so VoiceCount and the voice names are right - that is what
+        ///     IsDuet, the duet filter and the name screen ask for. NotesLoaded stays false, so the
+        ///     notes themselves are still read before anyone sings.
+        /// </remarks>
+        public void ApplyCachedNoteInfo(SSongInfo info)
+        {
+            IsRap = info.IsRap;
+
+            Medley.Source = (EDataSource)info.MedleySource;
+            Medley.StartBeat = info.MedleyStart;
+            Medley.EndBeat = info.MedleyEnd;
+            Medley.FadeInTime = info.MedleyFadeIn;
+            Medley.FadeOutTime = info.MedleyFadeOut;
+
+            Preview.Source = (EDataSource)info.PreviewSource;
+            Preview.StartTime = info.PreviewStart;
+
+            ShortEnd.Source = (EDataSource)info.ShortEndSource;
+            ShortEnd.EndBeat = info.ShortEndBeat;
+
+            // Reset() and not Reset(true): the voice names come from the header and are already
+            // there. The cached ones only fill a gap, they must not overwrite what was just read.
+            Notes.Reset();
+            for (int i = 0; i < info.VoiceCount; i++)
+            {
+                Notes.GetVoice(i, true);
+                if (!Notes.VoiceNames.IsSet(i) && info.VoiceNames != null && i < info.VoiceNames.Length
+                    && !String.IsNullOrEmpty(info.VoiceNames[i]))
+                    Notes.VoiceNames[i] = info.VoiceNames[i];
+            }
+        }
+
         public bool Save()
         {
             return Save(Path.Combine(Folder, FileName));
@@ -383,6 +466,31 @@ namespace VocaluxeLib.Songs
             public int Length;
         }
 
+        private List<SSeries> _SeriesCache;
+        private bool _SeriesCached;
+
+        /// <summary>
+        ///     _GetSeries walks every pair of lines and builds the lyrics of each one, and both
+        ///     _CalcMedley and _FindShortEnd asked for it - the same answer, computed twice for
+        ///     every song in the library. Held on to between the two calls and dropped again once
+        ///     the song is loaded, so nothing stays in memory per song.
+        /// </summary>
+        private List<SSeries> _GetSeriesCached()
+        {
+            if (!_SeriesCached)
+            {
+                _SeriesCache = _GetSeries();
+                _SeriesCached = true;
+            }
+            return _SeriesCache;
+        }
+
+        private void _DropSeriesCache()
+        {
+            _SeriesCache = null;
+            _SeriesCached = false;
+        }
+
         private List<SSeries> _GetSeries()
         {
             CVoice voice = Notes.GetVoice(0);
@@ -435,7 +543,7 @@ namespace VocaluxeLib.Songs
             if (!_CalculateMedley || Medley.Source != EDataSource.None)
                 return;
 
-            List<SSeries> series = _GetSeries();
+            List<SSeries> series = _GetSeriesCached();
             if (series == null)
                 return;
 
@@ -498,7 +606,7 @@ namespace VocaluxeLib.Songs
             if (ShortEnd.Source != EDataSource.None)
                 return;
 
-            List<SSeries> series = _GetSeries();
+            List<SSeries> series = _GetSeriesCached();
             if (series == null)
                 return;
 

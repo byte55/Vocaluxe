@@ -1,4 +1,4 @@
-#region license
+﻿#region license
 // This file is part of Vocaluxe.
 // 
 // Vocaluxe is free software: you can redistribute it and/or modify
@@ -78,6 +78,7 @@ namespace Vocaluxe.Base
 
         public const int DatabaseHighscoreVersion = 3;
         public const int DatabaseCoverVersion = 2;
+        public const int DatabaseSongInfoVersion = 1;
         public const int DatabaseCreditsRessourcesVersion = 1;
 
         public const int MaxNumScreens = 6;
@@ -110,6 +111,7 @@ namespace Vocaluxe.Base
 
         public const string FileNameOldHighscoreDB = "Ultrastar.db";
         public const string FileNameCoverDB = "CoverDB.sqlite";
+        public const string FileNameSongInfoDB = "SongInfoDB.sqlite";
         
         public const string FileNameMainLog = "Vocaluxe.log";
         public const string FileNameSongLog = "Song.log";

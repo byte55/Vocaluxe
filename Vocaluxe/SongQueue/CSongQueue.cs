@@ -20,6 +20,7 @@ using Vocaluxe.Base;
 using Vocaluxe.GameModes;
 using VocaluxeLib;
 using VocaluxeLib.Game;
+using VocaluxeLib.Log;
 using VocaluxeLib.Songs;
 
 namespace Vocaluxe.SongQueue
@@ -73,8 +74,17 @@ namespace Vocaluxe.SongQueue
 
         private bool _AddSong(int songID, EGameMode gameMode)
         {
-            if (!CSongs.GetSong(songID).IsGameModeAvailable(gameMode))
+            CSong song = CSongs.GetSong(songID);
+            if (song == null || !song.IsGameModeAvailable(gameMode))
                 return false;
+
+            // The library is loaded without the notes - this is where they are needed, and every
+            // way a song can end up being sung goes through here.
+            if (!song.EnsureNotesLoaded())
+            {
+                CLog.Error("Could not read the notes of \"" + song.Artist + " - " + song.Title + "\", not adding it");
+                return false;
+            }
 
             _SongQueue.Add(new SSongQueueEntry(songID, gameMode));
             return true;

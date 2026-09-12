@@ -1,4 +1,4 @@
-#region license
+﻿#region license
 // This file is part of Vocaluxe.
 // 
 // Vocaluxe is free software: you can redistribute it and/or modify
@@ -768,6 +768,7 @@ namespace VocaluxeLib.Songs
                     _Song._CalcMedley();
                     _Song._CheckPreview();
                     _Song._FindShortEnd();
+                    _Song._DropSeriesCache();
                     _Song.NotesLoaded = true;
                     if (_Song.IsDuet)
                         _Song._CheckDuet();

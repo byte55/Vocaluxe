@@ -17,6 +17,7 @@
 
 using System;
 using System.Linq;
+using System.Text;
 
 namespace VocaluxeLib.Songs
 {
@@ -66,7 +67,16 @@ namespace VocaluxeLib.Songs
 
         public string Lyrics
         {
-            get { return _Notes.Aggregate(String.Empty, (current, note) => current + note.Text); }
+            get
+            {
+                // Aggregate with current + note.Text allocated a new, longer string per note.
+                // Harmless for one line, but _GetSeries asks every line of every song for its
+                // lyrics while the library loads.
+                var sb = new StringBuilder();
+                foreach (CSongNote note in _Notes)
+                    sb.Append(note.Text);
+                return sb.ToString();
+            }
         }
         #endregion Properties
 

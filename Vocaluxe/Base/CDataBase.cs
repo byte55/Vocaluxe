@@ -1,4 +1,4 @@
-#region license
+﻿#region license
 // This file is part of Vocaluxe.
 // 
 // Vocaluxe is free software: you can redistribute it and/or modify
@@ -22,6 +22,7 @@ using Vocaluxe.Lib.Database;
 using VocaluxeLib;
 using VocaluxeLib.Draw;
 using VocaluxeLib.Log;
+using VocaluxeLib.Songs;
 
 namespace Vocaluxe.Base
 {
@@ -29,6 +30,7 @@ namespace Vocaluxe.Base
     {
         private static CHighscoreDB _HighscoreDB;
         private static CCoverDB _CoverDB;
+        private static CSongInfoDB _SongInfoDB;
 
         public static bool Init()
         {
@@ -44,7 +46,15 @@ namespace Vocaluxe.Base
             {
                 CLog.Fatal("Error initializing Cover-DB");
                 return false;
-            }            
+            }
+
+            // A miss here is not fatal - without it the songs are simply read in full, as before.
+            _SongInfoDB = new CSongInfoDB(Path.Combine(CSettings.DataFolder, CSettings.FileNameSongInfoDB));
+            if (!_SongInfoDB.Init())
+            {
+                CLog.Error("Error initializing SongInfo-DB, songs will be read in full");
+                _SongInfoDB = null;
+            }
             return true;
         }
 
@@ -60,7 +70,46 @@ namespace Vocaluxe.Base
                 _CoverDB.Close();
                 _CoverDB = null;
             }
+            if (_SongInfoDB != null)
+            {
+                _SongInfoDB.Close();
+                _SongInfoDB = null;
+            }
         }
+
+        #region song info cache
+        public static void PreloadSongInfos()
+        {
+            if (_SongInfoDB != null)
+                _SongInfoDB.Preload();
+        }
+
+        public static void DropSongInfoPreload()
+        {
+            if (_SongInfoDB != null)
+                _SongInfoDB.DropPreload();
+        }
+
+        public static bool GetSongInfo(string path, long mTime, long size, out SSongInfo info)
+        {
+            if (_SongInfoDB != null)
+                return _SongInfoDB.TryGet(path, mTime, size, out info);
+            info = default(SSongInfo);
+            return false;
+        }
+
+        public static void StoreSongInfos(IEnumerable<KeyValuePair<string, SSongInfo>> entries)
+        {
+            if (_SongInfoDB != null)
+                _SongInfoDB.Store(entries);
+        }
+
+        public static void RemoveMissingSongInfos(ICollection<string> presentPaths)
+        {
+            if (_SongInfoDB != null)
+                _SongInfoDB.RemoveMissing(presentPaths);
+        }
+        #endregion song info cache
 
         public static bool GetDataBaseSongInfos(string artist, string title, out int numPlayed, out DateTime dateAdded, out int highscoreID)
         {

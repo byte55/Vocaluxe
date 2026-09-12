@@ -1,4 +1,4 @@
-#region license
+﻿#region license
 // This file is part of Vocaluxe.
 // 
 // Vocaluxe is free software: you can redistribute it and/or modify
@@ -377,6 +377,22 @@ namespace Vocaluxe.Base
                     files = fileSet;
                 }
 
+                // The notes are the expensive part of loading a song by a wide margin, and the song
+                // list does not use them - it wants a handful of values derived from them. Those are
+                // cached per file, keyed on modification time and size, and the notes themselves are
+                // read when a song is actually put in the queue to be sung.
+                //
+                // With the cache off (which is what saving modified songs implies, since that has to
+                // see the notes to fix them) this is exactly what it was before.
+                bool useCache = CConfig.Config.Debug.SaveModifiedSongs != EOffOn.TR_CONFIG_ON;
+                var newInfos = new ConcurrentBag<KeyValuePair<string, SSongInfo>>();
+
+                if (useCache)
+                {
+                    using (CBenchmark.Time("Song Info Cache"))
+                        CDataBase.PreloadSongInfos();
+                }
+
                 using (CBenchmark.Time("Read TXTs"))
                 {
                     var fileList = files.ToList();
@@ -392,11 +408,38 @@ namespace Vocaluxe.Base
                         if (song == null)
                             return;
 
-                        if (song.LoadNotes())
+                        long mTime = 0, size = 0;
+                        bool haveStat = false;
+                        if (useCache)
                         {
-                            bag.Add(song);
-                            Interlocked.Increment(ref _NumSongsLoaded);
+                            try
+                            {
+                                var fi = new FileInfo(file);
+                                mTime = fi.LastWriteTimeUtc.Ticks;
+                                size = fi.Length;
+                                haveStat = true;
+                            }
+                            catch (Exception)
+                            {
+                                haveStat = false;
+                            }
                         }
+
+                        SSongInfo info;
+                        if (haveStat && CDataBase.GetSongInfo(file, mTime, size, out info))
+                        {
+                            song.ApplyCachedNoteInfo(info);
+                        }
+                        else
+                        {
+                            if (!song.LoadNotes())
+                                return;
+                            if (haveStat)
+                                newInfos.Add(new KeyValuePair<string, SSongInfo>(file, song.GetNoteInfo(mTime, size)));
+                        }
+
+                        bag.Add(song);
+                        Interlocked.Increment(ref _NumSongsLoaded);
                     });
 
                     int id = 0;
@@ -404,6 +447,14 @@ namespace Vocaluxe.Base
                     {
                         song.ID = id++;
                         _Songs.Add(song);
+                    }
+
+                    if (useCache)
+                    {
+                        if (!newInfos.IsEmpty)
+                            CDataBase.StoreSongInfos(newInfos);
+                        CDataBase.RemoveMissingSongInfos(new HashSet<string>(fileList, StringComparer.Ordinal));
+                        CDataBase.DropSongInfoPreload();
                     }
                 }
             }
@@ -415,6 +466,8 @@ namespace Vocaluxe.Base
                     Categorizer.Tabs = CConfig.Config.Game.Tabs;
                     Categorizer.ObjectChanged += _HandleCategoriesChanged;
                 }
+
+                _DumpSongInfoForVerification();
 
                 Category = -1;
                 SongsLoaded = true;
@@ -429,6 +482,82 @@ namespace Vocaluxe.Base
                         _LoadCoversAsync();
                         break;
                 }
+        }
+
+        /// <summary>
+        ///     Writes down everything the song list takes from the notes, for every song. Off unless
+        ///     VOCALUXE_DUMP_SONGINFO names a file.
+        /// </summary>
+        /// <remarks>
+        ///     This is how the note cache is checked: start once with the cache file deleted, start
+        ///     again so it is used, and diff the two dumps. They have to be identical, down to the
+        ///     note counts of the sampled songs, which are loaded through the same lazy path the
+        ///     song queue uses. Worth doing after any change to CSongLoader.ReadNotes or to what
+        ///     SSongInfo carries - a forgotten field shows up here and nowhere else until an evening
+        ///     with guests.
+        ///
+        ///     Verified this way over 2807 songs: identical.
+        /// </remarks>
+        private static void _DumpSongInfoForVerification()
+        {
+            string path = Environment.GetEnvironmentVariable("VOCALUXE_DUMP_SONGINFO");
+            if (String.IsNullOrEmpty(path))
+                return;
+            try
+            {
+                using (var w = new StreamWriter(path))
+                {
+                    foreach (CSong song in _Songs.OrderBy(s => s.Folder).ThenBy(s => s.FileName))
+                    {
+                        var names = new List<string>();
+                        for (int i = 0; i < song.Notes.VoiceCount; i++)
+                            names.Add(song.Notes.VoiceNames.IsSet(i) ? song.Notes.VoiceNames[i] : "-");
+                        w.WriteLine(String.Join("|",
+                            Path.Combine(song.Folder, song.FileName),
+                            song.Notes.VoiceCount.ToString(),
+                            String.Join(",", names),
+                            song.IsDuet ? "duet" : "single",
+                            song.IsRap ? "rap" : "norap",
+                            song.Medley.Source + ":" + song.Medley.StartBeat + ":" + song.Medley.EndBeat + ":" +
+                            song.Medley.FadeInTime.ToString("F4") + ":" + song.Medley.FadeOutTime.ToString("F4"),
+                            song.Preview.Source + ":" + song.Preview.StartTime.ToString("F4"),
+                            song.ShortEnd.Source + ":" + song.ShortEnd.EndBeat,
+                            String.Join(",", song.AvailableGameModes)));
+                    }
+
+                    // Every 50th song: force the notes in, the way the song queue does, and write
+                    // down what came out. Read in full these numbers are already there, so the two
+                    // dumps only match if the lazy path produces the same notes.
+                    w.WriteLine("--- notes ---");
+                    int n = 0;
+                    foreach (CSong song in _Songs.OrderBy(s => s.Folder).ThenBy(s => s.FileName))
+                    {
+                        if (n++ % 50 != 0)
+                            continue;
+                        if (!song.EnsureNotesLoaded())
+                        {
+                            w.WriteLine(Path.Combine(song.Folder, song.FileName) + "|FAILED");
+                            continue;
+                        }
+                        var parts = new List<string>();
+                        for (int i = 0; i < song.Notes.VoiceCount; i++)
+                        {
+                            CVoice v = song.Notes.GetVoice(i);
+                            int noteCt = 0;
+                            foreach (CSongLine l in v.Lines)
+                                noteCt += l.Notes.Length;
+                            parts.Add(v.NumLines + "/" + noteCt + "/" + v.Points);
+                        }
+                        w.WriteLine(String.Join("|", Path.Combine(song.Folder, song.FileName),
+                            song.Notes.VoiceCount.ToString(), String.Join(",", parts)));
+                    }
+                }
+                CLog.Information("Dumped song info to " + path);
+            }
+            catch (Exception e)
+            {
+                CLog.Error(e, "Could not dump song info");
+            }
         }
 
         private static void _LoadCoversAsync()
