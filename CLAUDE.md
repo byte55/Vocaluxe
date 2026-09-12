@@ -325,7 +325,12 @@ Liegt **nicht** im Repo, sondern unter `~/.config/Vocaluxe/`:
 - `Logs/Vocaluxe.log` — die einzige brauchbare Fehlerquelle. Das Programm
   schreibt **nichts** nach stdout/stderr und beendet sich bei einem Absturz
   mit Exit-Code 0. Ein stiller, schneller Exit heißt also nicht „ok".
-- `Logs/Song.log` — Parser-Warnungen zu einzelnen Songdateien.
+- `Logs/Song.log` — Parser-Warnungen zu einzelnen Songdateien. Seit dem
+  Noten-Cache stehen dort nur noch Songs, die wirklich gelesen wurden — nach dem
+  ersten Start also fast nichts mehr.
+- `SongInfoDB.sqlite` und `CoverDB.sqlite` — reine Zwischenspeicher. Beide dürfen
+  jederzeit gelöscht werden; der nächste Start baut sie neu auf (dauert dann
+  einmalig so lange wie früher jeder Start).
 
 `Renderer` in der `Config.xml` kennt unter Linux nur `TR_CONFIG_OPENGL` und
 `TR_CONFIG_SOFTWARE`. Direct3D steht im Enum hinter `#if WIN` und existiert
@@ -633,16 +638,80 @@ Programmordner unter `dist/Vocaluxe/Profiles/`, selbst angelegte in
 
 ### Große Songbibliothek: was dabei passiert
 
-Gemessen mit **2807 Songs (54 GB)** auf diesem Rechner:
+Gemessen mit **2807 Songs (54 GB)** auf diesem Rechner, warmer Dateicache, eine
+Instanz zur Zeit:
 
-| | |
-|---|---|
-| Songdateien einlesen | 5,0 s (warmer Dateicache; direkt nach dem Kopieren 33 s) |
-| Cover erzeugen | 39 s, danach aus dem Cache |
-| Speicher | 694 MiB |
-| `CoverDB.sqlite` | 39 MB |
+| | vorher | jetzt |
+|---|---|---|
+| Songdateien einlesen (`Read TXTs`) | 2,7 s | **0,7 s** |
+| bis das Hauptmenü kommt (`Loaded Songs Full`) | 3,2 s | **1,2 s** |
+| Cover laden, aus dem Cache (`Loaded Covers`) | 12,5–17,1 s | **3,3 s** |
+| Speicher (RSS-Spitze) | 799 MiB | **501 MiB** |
+| `CoverDB.sqlite` | 39 MB | 39 MB |
+| `SongInfoDB.sqlite` | — | 0,8 MB |
 
-**Die Falle war der Speicher, nicht die Platte.** Cover liegen als unkomprimierte
+Das `Loaded Covers` läuft im Hintergrund, blockiert das Menü also nicht; was man
+als Ladebalken sieht, ist `Read TXTs` — die Zahl links in „Songs: X (Y geladen)".
+
+Drei Dinge steckten dahinter:
+
+- **Die Cover-Datenbank hatte keinen einzigen Index.** Ein Cover über seinen Pfad
+  zu finden durchsuchte die ganze `Cover`-Tabelle, und seine Daten zu holen die
+  ganze `CoverData` — also die 39 MB Bilddaten selbst, einmal pro Song. Bei 48
+  Songs fällt das nicht auf, bei 2800 ist es fast die gesamte Ladezeit. Bestehende
+  Datenbanken bekommen die Indizes beim Start, sie werden nicht neu gebaut.
+- **Der Cache-Treffer lag komplett unter der Datenbanksperre**, WebP-Dekodieren
+  eingeschlossen. Die vier Threads standen Schlange statt zu arbeiten.
+- **Die Noten jedes Songs wurden beim Start gelesen**, obwohl die Songliste sie
+  nie ansieht — siehe unten.
+
+### Die Noten werden erst gelesen, wenn ein Song gesungen wird
+
+Vom Notenlesen braucht die Songliste nur eine Handvoll Werte: Stimmenzahl und
+-namen, `IsRap`, Medley, Preview und Short End. Die stehen jetzt pro Datei in
+**`~/.config/Vocaluxe/SongInfoDB.sqlite`**, mit Änderungszeit und Größe als
+Schlüssel. Die Noten selbst liest `CSongQueue._AddSong` nach — die eine Stelle,
+durch die jeder Song muss, der tatsächlich gesungen wird.
+
+Das spart 2,1 der 2,7 Sekunden und rund 300 MiB, denn über zwei Millionen
+Notenobjekte lagen bis dahin ungenutzt im Speicher.
+
+**Wenn du an `CSongLoader.ReadNotes` etwas änderst, muss `SSongInfo` mitziehen**
+und `DatabaseSongInfoVersion` hochgezählt werden. Sonst verhalten sich gecachte
+Songs anders als frisch gelesene, und das merkt man an einem Abend mit Gästen.
+Zum Gegenprüfen gibt es einen Ende-zu-Ende-Vergleich:
+
+```bash
+rm -f ~/.config/Vocaluxe/SongInfoDB.sqlite
+VOCALUXE_DUMP_SONGINFO=/tmp/gelesen.txt ./dist/Vocaluxe.sh   # baut den Cache auf
+VOCALUXE_DUMP_SONGINFO=/tmp/gecacht.txt ./dist/Vocaluxe.sh   # nutzt ihn
+diff /tmp/gelesen.txt /tmp/gecacht.txt                       # muss leer sein
+```
+
+Der Dump enthält alles aus den Noten Abgeleitete für jeden Song und zusätzlich
+für jeden 50. die Zeilen-, Noten- und Punktzahl je Stimme, nachgeladen über
+denselben Weg wie beim Singen. Geprüft mit 2807 und mit 5007 Songs: identisch.
+
+Der Cache wird **übersprungen, wenn `SaveModifiedSongs` an ist** — wer defekte
+Songdateien korrigieren lassen will, muss sie ganz lesen. Ein Fehltreffer, ein
+veralteter Eintrag oder eine kaputte Cache-Datei führen alle zurück aufs
+Volllesen; schlimmstenfalls ist es also so langsam wie vorher.
+
+### Bei 5000 Songs wird die Platte zum Faktor
+
+Gegengeprüft mit **5007 Songs** (die echte Bibliothek plus 2200 Kopien, Medien
+als Symlink). Warm bleibt es gutmütig — `Read TXTs` 1,2 s, Cover 4,7 s. Aber die
+Werte **schwanken stark**, je nachdem was gerade im Dateicache liegt: derselbe
+Lauf kostete einmal 1,2 s und einmal 5,7 s, das Verzeichnisdurchlaufen
+(`List Songs`) 0,3 s gegen 6,6 s. Bei 7,2 GB RAM reicht der Cache für 5000
+Songordner nicht mehr zuverlässig.
+
+Der Grund: Der **Header** jeder Datei wird weiterhin gelesen, das sind 5000
+Dateiöffnungen. Wer das auch noch loswerden will, müsste die Header mitcachen —
+dann bliebe nur das Verzeichnis-Listing plus ein `stat` je Datei. Gemessen wäre
+dort noch rund eine Sekunde zu holen, im kalten Fall mehr.
+
+**Die ältere Falle war der Speicher.** Cover liegen als unkomprimierte
 Texturen im RAM. Bei der eingestellten Größe von 512 px ist das **1 MB pro Song** —
 2807 Songs sind 2,9 GB, auf einem Rechner mit 7,2 GB und einer iGPU, die sich
 denselben Speicher teilt. Der Kernel hat Vocaluxe beim Cover-Laden abgeschossen
