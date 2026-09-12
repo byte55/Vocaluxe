@@ -462,8 +462,11 @@ Traefik). Aufbau, Protokoll und die Sicherheitsabwägung stehen in dessen README
 - **Der Raumcode wird ausschließlich vom Relay vergeben**, sechs Ziffern. Vocaluxe
   speichert ihn nicht, sondern weist sich mit `RemoteAgentId` aus (wird beim ersten
   Start einmal erzeugt) und bekommt seinen Raum zurück. **Neustarts von Vocaluxe
-  ändern den Code also nicht**, ein Neustart des Relays schon — dessen Zustand liegt
-  nur im Speicher.
+  ändern den Code also nicht** — und seit dem 2026-09-12 auch Neustarts des Relays
+  nicht mehr: Der Server hält die Zuordnung `RemoteAgentId` → Raumcode inzwischen
+  auf der Platte. Ausgehängte QR-Codes bleiben damit über einen Abend hinweg gültig.
+  **Achtung:** Der ausgerollte Relay ist dem Stand in `~/Vocaluxe-server` voraus —
+  dort liegt die Zuordnung im Quelltext noch im Arbeitsspeicher.
 - **Das QR-Popup zeigt ausschließlich den Relay-Link.** Steht keine Verbindung,
   erscheint kein QR-Code, sondern der Grund im Klartext („Noch keine Verbindung
   zum Relay…", bzw. Token abgelehnt, Adresse fehlt, Server nicht gestartet).
@@ -957,15 +960,5 @@ bringt JACK-Unterstützung mit (`JackIn`/`JackOut`, lädt `libjack.so.0`),
   der PitchTracker.
 - **Erst danach** lohnt es, ffmpeg selbst mitzuliefern (Zahlen oben). Zwei
   ungeprüfte Dinge gleichzeitig auf die Bühne zu schieben, wäre der falsche Weg.
-- **Der Raumcode überlebt einen Relay-Neustart nicht.** Am 2026-08-24 sprang er
-  ohne Zutun von `707272` auf `535964`; die `RemoteAgentId` war unverändert und
-  Vocaluxe war nur neu gestartet worden. Damit liegt es an der Gegenseite: Der
-  Relay hält die Zuordnung `RemoteAgentId` → Raumcode nur im Speicher, ein
-  Container-Neustart oder Deploy von `karaoke.walter.berlin` vergibt also einen
-  neuen Code. Praktisch heißt das: ausgehängte QR-Codes und aufgeschriebene
-  Zahlen werden ungültig, ohne dass am Rechner etwas passiert ist. Zu beheben
-  wäre es in **`~/Vocaluxe-server`**, nicht in Vocaluxe — die Zuordnung müsste
-  auf die Platte statt nur in den Speicher. Bis dahin: den Code erst kurz vor
-  dem Verteilen ablesen, das QR-Popup zeigt immer den aktuellen Stand.
 - Theme-Videos (`BG_Video.mp4`, `IntroIn/Mid/Out.mp4`) fehlen im Repo, das Log
   meldet „Expect visual problems". Rein kosmetisch.
