@@ -17,6 +17,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Serilog;
@@ -37,6 +38,11 @@ namespace VocaluxeLib.Log
         private static string _CrashMarkerFilePath;
         private static ShowReporterDelegate _ShowReporterFunc;
         private static string _CurrentVersion;
+
+        // Old logs kept next to the current one. An evening with restarts and crashes easily
+        // produces ten runs; 50 covers several evenings.
+        private const int _MainLogsToKeep = 50;
+        private const int _SongLogsToKeep = 10;
 
         private const string _MainLogTemplate = "[{TimeStampFromStart}] [{Level}] {Message}{NewLine}{Properties}{NewLine}{Exception}";
         private const string _SongLogTemplate = "{Message}{NewLine}Additional info:{Properties}{NewLine}{Exception}";
@@ -66,14 +72,23 @@ namespace VocaluxeLib.Log
             var mainLogFilePath = Path.Combine(_LogFolder, fileNameMainLog);
             var songLogFilePath = Path.Combine(_LogFolder, fileNameSongInfoLog);
 
-            // Check if crash marker file
+            // Check if crash marker file. The marker is deleted by Close(), so finding one means the
+            // previous run did not shut down through the normal path (crash, kill, power loss).
+            string previousRunInfo = null;
             if (File.Exists(_CrashMarkerFilePath))
             {
                 // There was a crash in the last run -> check version tag of the crashed application instance
-                string versionTag;
-                using (StreamReader reader = new StreamReader(_CrashMarkerFilePath, Encoding.UTF8))
+                string versionTag = "";
+                try
                 {
-                    versionTag = (reader.ReadLine() ?? "").Trim();
+                    string[] markerLines = File.ReadAllLines(_CrashMarkerFilePath, Encoding.UTF8);
+                    if (markerLines.Length > 0)
+                        versionTag = markerLines[0].Trim();
+                    previousRunInfo = string.Join(" | ", markerLines.Select(l => l.Trim()).Where(l => l.Length > 0));
+                }
+                catch (Exception e)
+                {
+                    previousRunInfo = "marker unreadable: " + e.Message;
                 }
 
                 // Delete the old marker
@@ -83,7 +98,10 @@ namespace VocaluxeLib.Log
                 if (_CurrentVersion == versionTag && File.Exists(mainLogFilePath))
                 {
                     string logContent = File.ReadAllText(mainLogFilePath, Encoding.UTF8);
-                    _ShowReporterFunc(crash:true,
+                    // The reporter is null on the cross-platform build. Calling it unconditionally threw a
+                    // NullReferenceException that Program._Run swallowed - before the logger existed - and the
+                    // process exited with code 0 and no log entry after every unclean run.
+                    _ShowReporterFunc?.Invoke(crash:true,
                         showContinue:true,
                         vocaluxeVersionTag:versionTag,
                         log:logContent,
@@ -91,12 +109,18 @@ namespace VocaluxeLib.Log
                 }
 #endif
             }
-            
-            // Write new marker
-            File.WriteAllText(_CrashMarkerFilePath, _CurrentVersion, Encoding.UTF8);
 
-            CLogFileRoller.RollLogs(mainLogFilePath, 2);
-            CLogFileRoller.RollLogs(songLogFilePath, 2);
+            // Write new marker. First line stays the version tag; the rest says which run to blame.
+            File.WriteAllText(_CrashMarkerFilePath,
+                string.Join(Environment.NewLine,
+                    _CurrentVersion,
+                    "Pid=" + Environment.ProcessId,
+                    "Start=" + DateTime.Now.ToString("o"),
+                    "BootId=" + _ReadBootId()),
+                Encoding.UTF8);
+
+            CLogFileRoller.RollLogs(mainLogFilePath, _MainLogsToKeep);
+            CLogFileRoller.RollLogs(songLogFilePath, _SongLogsToKeep);
 
             _MainLog = new LoggerConfiguration()
                 .MinimumLevel.Is(logLevel.ToSerilogLogLevel())
@@ -128,7 +152,23 @@ namespace VocaluxeLib.Log
             Information("Starting to log", 
                 Params( new { Version = _CurrentVersion},
                     new { StartDate = DateTime.Now},
+                    new { Pid = Environment.ProcessId},
                     new { Id = Guid.NewGuid() } ) );
+
+            if (previousRunInfo != null)
+                Warning("Previous run did not shut down cleanly (crash marker found)", Params(new { PreviousRun = previousRunInfo }));
+        }
+
+        private static string _ReadBootId()
+        {
+            try
+            {
+                return File.ReadAllText("/proc/sys/kernel/random/boot_id").Trim();
+            }
+            catch (Exception)
+            {
+                return "n/a";
+            }
         }
 
         /// <summary>

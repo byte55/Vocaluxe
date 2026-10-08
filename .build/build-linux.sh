@@ -70,17 +70,9 @@ _copy_pm_sources() {
 _copy_pm_sources PartyModeChallenge Challenge
 _copy_pm_sources PartyModeTicTacToe TicTacToe
 
-# Launcher that runs from the dist directory regardless of CWD
-cat > "$DIST_ROOT/Vocaluxe.sh" <<'LAUNCH'
-#!/usr/bin/env bash
-DIR="$(cd "$(dirname "$0")/Vocaluxe" && pwd)"
-if [ -x "$DIR/Vocaluxe" ]; then
-    exec "$DIR/Vocaluxe" "$@"      # self-contained build
-else
-    exec dotnet "$DIR/Vocaluxe.dll" "$@"  # framework-dependent build
-fi
-LAUNCH
-chmod +x "$DIST_ROOT/Vocaluxe.sh"
+# Launcher that runs from the dist directory regardless of CWD. It also records how each
+# run ended (exit code/signal), keeps stdout/stderr and enables .NET crash dumps.
+install -m 0755 "$ROOT/.build/vocaluxe-launcher.sh" "$DIST_ROOT/Vocaluxe.sh"
 
 echo ">> Done."
 echo "   App:      $DIST"
