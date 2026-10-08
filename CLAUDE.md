@@ -1568,7 +1568,7 @@ aber nicht mehr gebraucht.
   zeitweise ohne Signal am Eingang (Mikrofon und Kabel getauscht, danach ok). **Ersatzkabel für USB
   (UR22), Ausgang zur Anlage und Mikrofone gehören in die Tasche.** Offen bleibt die Latenz beim
   Selbsthören über die PA (Quantum 256 = 5,8 ms je Block, Round-Trip ungemessen).
-- **Die USB-Platte hat eine Bad-Block-Liste.** Beim Mounten meldet der Kernel `ntfs3(sdb4): Volume contains 744 bad blocks in 2 fragments` — Cluster, die Windows irgendwann als defekt markiert hat. I/O-Fehler gab es im Boot vom 2026-10-08 keine, aber das ist die zweite Hälfte der Bibliothek ohne bekannte Kopie; ein SMART-Check (`smartmontools`, `sudo smartctl -a -d sat /dev/sdb`) und eine Sicherung der Songs stehen aus.
+- **Die USB-Platte hat eine Bad-Block-Liste.** Beim Mounten meldet der Kernel `ntfs3(sdb4): Volume contains 744 bad blocks in 2 fragments` — Cluster, die Windows irgendwann als defekt markiert hat. I/O-Fehler gab es im Boot vom 2026-10-08 keine. Von den Songs gibt es Sicherungen (laut Besitzer, 2026-10-08). `smartmontools` ist installiert; der SMART-Check (`sudo smartctl -H -A -d sat /dev/sdb`) steht aus.
 - **Das Web-UI hat keinen Zugangsschutz** (siehe „Reaper fernsteuern") — am Veranstaltungsort
   im fremden Netz entweder in Reaper ein Passwort setzen oder den Port per `ufw` auf das Netz des
   Tablets beschränken. Bewusst vertagt.
