@@ -343,42 +343,38 @@ Liegt **nicht** im Repo, sondern unter `~/.config/Vocaluxe/`:
 `TR_CONFIG_SOFTWARE`. Direct3D steht im Enum hinter `#if WIN` und existiert
 hier nicht.
 
-### Abgebrochener Prozess blockiert den nächsten Start
+### Einzelinstanz-Schutz: Mutex und `/tmp/.dotnet/shm`
 
-> **Korrektur vom 2026-10-08:** Der hier beschriebene stille Fehlstart nach hartem
-> Beenden hat eine andere Ursache — den Crash-Marker, siehe „Falle: der erste Start
-> nach einem unsauberen Ende scheitert". Nachgestellt: Vier nach `kill -9` liegen
-> gebliebene `session<PID>`-Verzeichnisse unter `/tmp/.dotnet/shm` haben den nächsten
-> Start **nicht** verhindert. Dass `rm -rf /tmp/.dotnet/shm` „half", lag daran, dass der
-> fehlgeschlagene Start den Marker nebenbei gelöscht hatte. Ob die weiter unten
-> genannte `global/*.server`-Variante unabhängig davon klemmen kann, ist nicht
-> nachgestellt; der Befehl schadet nicht.
+Die Sperre ist ein benannter Mutex, den .NET unter Linux als Datei unter
+`/tmp/.dotnet/shm/` ablegt.
 
-Die Single-Instance-Sperre ist ein benannter Mutex, den .NET unter Linux als
-Datei unter `/tmp/.dotnet/shm/` ablegt. Wird der Prozess **hart beendet**
-(SIGTERM/SIGKILL, etwa durch `timeout` in einem Testskript), bleibt er als
-*abandoned* zurück. Der nächste Start stirbt dann daran, **bevor das Logging
-initialisiert ist**: Exit-Code 0 nach ~0,1 s, kein Log-Eintrag, und nicht einmal
-die vorgesehene Meldung „Another Instance of Vocaluxe is already runnning!",
-weil der reguläre Zweig gar nicht erreicht wird.
+**Behoben am 2026-10-08: Der Schutz galt nur innerhalb einer Sitzung.** Der Mutex hieß
+`Vocaluxe-SingleInstanceMutex`; ein Name ohne Präfix ist unter Linux auf die Sitzung
+(`getsid`) des Prozesses beschränkt, daher die Verzeichnisse `session<PID>` unter
+`shm`. Der Starter startet Vocaluxe mit `setsid`, jeder Start bekam also eine **eigene**
+Sitzung, und keiner sah den anderen: Ein zweiter Start (Desktop-Icon, während die
+Instanz des Starters läuft) wurde nicht abgewiesen, zwei Vocaluxe teilten sich Fenster,
+Mikrofone und Audioausgabe. Gemessen: zweite Instanz in anderer Sitzung lief weiter,
+in derselben Sitzung endete sie mit Exit-Code 3. Jetzt heißt der Mutex
+`Global\Vocaluxe-SingleInstanceMutex` (liegt unter `shm/global`), und die zweite Instanz
+endet unabhängig von der Sitzung mit Exit-Code 3 und der Meldung „Another Instance of
+Vocaluxe is already runnning!" auf stderr (also in `Logs/stderr/`).
 
-**Der genaue Pfad ist nicht stabil.** Mal liegt dort nur
-`/tmp/.dotnet/shm/global/<Hash>.server` — ohne `session*`-Verzeichnis und ohne
-lesbaren Namen —, mal beides nebeneinander, etwa
-`global/Jla74Ksk….server` **und** `session<PID>/Vocaluxe-SingleInstanceMutex`
-(nachgesehen am 2026-09-12, beide vorhanden). Ein auf eine der beiden Formen
-gemünztes Aufräumkommando trifft also je nach Lage ins Leere und die Sperre
-bleibt liegen; deshalb immer das ganze `shm`-Verzeichnis entfernen.
+Dazu fängt `_EnsureSingleInstance` eine `AbandonedMutexException` ab: Stirbt der Besitzer
+mit `kill -9`, gehört die Sperre dem nächsten Start (gemessen: startet ohne Aufräumen,
+das Log meldet den unsauberen Vorlauf).
 
-Beim normalen Schließen des Fensters passiert das nicht. Falls es doch klemmt:
+> **Korrektur vom 2026-10-08 zur früheren Fassung dieses Abschnitts:** Dass der Start nach
+> hartem Beenden still starb, lag nicht am Mutex, sondern am Crash-Marker, siehe „Falle:
+> der erste Start nach einem unsauberen Ende scheitert". Liegengebliebene
+> `session<PID>`-Verzeichnisse haben den nächsten Start nicht verhindert, und dass
+> `rm -rf /tmp/.dotnet/shm` „half", lag daran, dass der fehlgeschlagene Start den Marker
+> nebenbei gelöscht hatte. Ob die frühere Variante `global/<Hash>.server` unabhängig davon
+> klemmen konnte, ist nicht nachgestellt; der Befehl schadet nicht:
 
 ```bash
 rm -rf /tmp/.dotnet/shm
 ```
-
-Wer Vocaluxe automatisiert testet, sollte das einkalkulieren — zwei
-aufeinanderfolgende `timeout`-Läufe sehen sonst wie ein sporadischer Absturz
-aus.
 
 ## Web-Warteliste (Songwünsche per Handy)
 
@@ -860,28 +856,54 @@ nicht mehr per `exec`, sondern als Elternprozess und hält fest:
 | `Dumps/` | .NET-Crash-Dump (~0,9 GB) plus `.crashreport.json` mit Stacktraces, die letzten 3 |
 | `Logs/Vocaluxe.log` | Warnung „Previous run did not shut down cleanly" mit PID des toten Laufs |
 
-Exit-Codes lesen: **0** = die App ging ihren eigenen Beenden-Pfad (Menü, Fenster zu,
-abgefangener Startfehler); **134** SIGABRT (.NET-Fail-Fast); **139** SIGSEGV (Absturz in
-nativem Code); **137** SIGKILL (`kill -9`, OOM-Killer); **143** SIGTERM.
+Exit-Codes lesen: **0** = die App ging ihren eigenen Beenden-Pfad (Menü oder
+Fenster-Close, siehe unten welcher); **1** unbehandelte Exception; **2** Startfehler;
+**3** zweite Instanz; **129/130/131/143** SIGHUP/SIGINT/SIGQUIT/SIGTERM, von der App
+selbst behandelt; **134** SIGABRT (.NET-Fail-Fast); **139** SIGSEGV (Absturz in nativem
+Code); **137** SIGKILL (`kill -9`, OOM-Killer, oder der Selbstkill-Notausgang).
 
 Nach einem Vorfall zuerst, **bevor** neu gestartet wird (neue Starts rollen die Logs):
 
 ```bash
 tail ~/.config/Vocaluxe/Logs/launcher.log      # Exit-Code/Signal des letzten Laufs
 ls -t ~/.config/Vocaluxe/Dumps/ | head         # gab es einen Dump?
+grep -h "Exit requested\|Shutdown complete\|did not shut down" ~/.config/Vocaluxe/Logs/Vocaluxe*.log
 ```
 
-Zwei Befunde nebenbei: **SIGTERM beendet Vocaluxe nicht** (nach 12 s lief es noch; es
-braucht `kill -9`, was wiederum einen unsauberen Marker hinterlässt). Und per `kill -ABRT`
-bzw. `-SEGV` von außen geschickt, schreibt .NET zwar Dump und Crash-Report, **hängt
-danach aber** (`futex_do_wait`), statt zu enden — ein echter Absturz verhält sich evtl.
-anders, die Kreuzprobe steht aus.
+**Warum Vocaluxe endet, steht seit 2026-10-08 im Log** (`Base/CExit.cs`). Jeder Weg ins
+Beenden meldet sich dort, der erste gewinnt:
 
-Noch offen: Vocaluxe selbst schreibt nicht, **warum** es endet (Menü-Beenden,
-Fenster-Close-Request, Signal). Alt+F4 kommt unter GNOME/Wayland nur als
-`xdg_toplevel.close` an, ist also vom Klick aufs Fenster-X nicht zu unterscheiden.
-Geplant: Beenden-Gründe loggen, SIGTERM/SIGINT/SIGHUP sauber behandeln, Herzschlag-Zeile
-mit letztem bekannten Zustand.
+| Zeile im Log | Bedeutung |
+|---|---|
+| `Exit requested: MenuExit` | Exit-Button im Hauptmenü; das Detail sagt Tastatur oder Maus (Enter kann auch von der Web-Fernbedienung kommen, siehe `lastWebRemoteKey`) |
+| `Exit requested: WindowClose` | das Fenstersystem hat das Fenster zu schließen verlangt: **Alt+F4, Schließen-Knopf, „Beenden" im Dock, Logout** — unter GNOME/Wayland verschluckt der Compositor Alt+F4 und schickt nur `xdg_toplevel.close`, die vier sind für Vocaluxe nicht zu unterscheiden. Der Kontext hilft: `lastKey`, `recentInput` (mit Alt+…), `focused` |
+| `Exit requested: Signal` | SIGTERM/SIGINT/SIGHUP/SIGQUIT; Vocaluxe fährt dann **sauber** herunter (Exit-Code 128+n) |
+| `Exit requested: StartupFailure` / `FatalException` | Startfehler (Exit 2) bzw. unbehandelte Exception (Exit 1), mit Typ und Meldung |
+| `Shutdown without a recorded reason` | die Hauptschleife endete, ohne dass sich jemand meldete — fehlender Pfad in `CExit`, bitte melden |
+| `Process exit without the normal shutdown sequence` | der Prozess ging weg, ohne die eigene Abschaltung zu durchlaufen |
+| `Shutdown complete` | letzte Zeile jedes sauberen Laufs; fehlt sie, war es nicht sauber |
+| `Previous run did not shut down cleanly` (Start des nächsten Laufs) | der Lauf davor hat keine `Shutdown complete`-Zeile geschrieben: Absturz, `kill -9` oder Stromausfall |
+
+Der Kontext jeder Zeile: Laufzeit, aktueller Screen, Zeit seit der letzten Taste bzw.
+Mausbewegung, die letzten acht Eingaben mit Modifikatoren und die letzte Taste der
+Web-Fernbedienung.
+
+**Signale.** SIGTERM beendete Vocaluxe früher gar nicht (nach 12 s lief es noch, nur
+`kill -9` half — und hinterließ einen unsauberen Marker). Jetzt fährt es in etwa einer
+Sekunde sauber herunter. Hängt der Weg dorthin (die Hauptschleife steht), beendet sich
+der Prozess nach `CExit.SignalGraceSeconds` (15 s) mit einer Fehlerzeile selbst, damit ein
+Logout oder Shutdown nicht ewig wartet. Der Selbstkill-Pfad ist nur als Negativfall
+getestet (ein gesunder Shutdown wird in Ruhe gelassen); einen echten Hänger konnte ich hier
+nicht erzeugen, `gdb` darf wegen `ptrace_scope` nicht an einen laufenden Prozess.
+SIGINT und SIGQUIT kommen nur an, weil der Launcher mit `set -m` läuft — ohne
+Job-Control startet bash Hintergrundjobs mit ignoriertem SIGINT/SIGQUIT, und die App erbt das.
+
+Per `kill -ABRT` bzw. `-SEGV` von außen geschickt, schreibt .NET zwar Dump und
+Crash-Report, **bleibt danach aber stehen** (`futex_do_wait`) statt zu enden; SIGTERM
+beendet es dann trotzdem. Wie sich ein echter Absturz verhält, ist nicht geprüft.
+
+Noch offen (Phase 3): Herzschlag-Zeile mit dem letzten bekannten Zustand und ein
+Wächter, der meldet, wenn die Hauptschleife steht.
 
 ### Falle: VSync + minimiertes Fenster killt den Webserver
 
