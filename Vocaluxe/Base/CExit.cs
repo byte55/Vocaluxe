@@ -65,6 +65,7 @@ namespace Vocaluxe.Base
         private static readonly object _Lock = new object();
         private static readonly Stopwatch _Uptime = Stopwatch.StartNew();
         private static readonly List<string> _RecentInput = new List<string>();
+        private static readonly List<string> _RecentRaw = new List<string>();
         private static readonly List<PosixSignalRegistration> _SignalRegistrations = new List<PosixSignalRegistration>();
 
         private static EExitReason? _Reason;
@@ -125,6 +126,7 @@ namespace Vocaluxe.Base
                 _LastKeyMs = _LastMouseMs = _LastRemoteKeyMs = -1;
                 _LastRemoteKey = null;
                 _RecentInput.Clear();
+                _RecentRaw.Clear();
             }
             _StopRequested = false;
             DescribeState = null;
@@ -150,6 +152,21 @@ namespace Vocaluxe.Base
                 _LastMouseMs = _Uptime.ElapsedMilliseconds;
                 if (mouse.LB || mouse.RB || mouse.MB)
                     _Remember("Mouse" + (mouse.LB ? " left" : "") + (mouse.RB ? " right" : "") + (mouse.MB ? " middle" : "") + " button");
+            }
+        }
+
+        /// <summary>
+        ///     What the window itself received, before the game maps it to its own keys: the raw key
+        ///     name with press/release, and focus changes. Keys the game does not know (Alt, F4 under some
+        ///     compositors) show up as "None" in the game's input list; this list says which they were.
+        /// </summary>
+        public static void NoteRawKey(string what)
+        {
+            lock (_Lock)
+            {
+                _RecentRaw.Add(what + " @" + _Uptime.Elapsed.TotalSeconds.ToString("0.0") + "s");
+                if (_RecentRaw.Count > 12)
+                    _RecentRaw.RemoveAt(0);
             }
         }
 
@@ -201,7 +218,8 @@ namespace Vocaluxe.Base
                        "; lastKey=" + _Ago(_LastKeyMs) +
                        "; lastMouse=" + _Ago(_LastMouseMs) +
                        "; lastWebRemoteKey=" + (_LastRemoteKey == null ? "never" : _LastRemoteKey + " " + _Ago(_LastRemoteKeyMs)) +
-                       "; recentInput=[" + string.Join(", ", _RecentInput) + "]";
+                       "; recentInput=[" + string.Join(", ", _RecentInput) + "]" +
+                       "; rawWindowEvents=[" + string.Join(", ", _RecentRaw) + "]";
             }
         }
 

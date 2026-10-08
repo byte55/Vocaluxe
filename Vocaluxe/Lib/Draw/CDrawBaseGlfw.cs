@@ -171,11 +171,14 @@ namespace Vocaluxe.Lib.Draw
 
         private void _OnKeyDown(KeyboardKeyEventArgs e)
         {
+            if (!e.IsRepeat)
+                CExit.NoteRawKey(e.Key + " down" + (e.Alt ? " +Alt" : ""));
             _Keys.KeyDown(_MapKey(e.Key), e.Shift, e.Alt, e.Control);
         }
 
         private void _OnKeyUp(KeyboardKeyEventArgs e)
         {
+            CExit.NoteRawKey(e.Key + " up");
             _Keys.KeyUp(_MapKey(e.Key), e.Shift, e.Alt, e.Control);
         }
 
@@ -264,6 +267,7 @@ namespace Vocaluxe.Lib.Draw
             _Window.Title = CSettings.GetFullVersionText();
 
             _Window.Closing += _OnClosing;
+            _Window.FocusedChanged += e => CExit.NoteRawKey(e.IsFocused ? "window gained focus" : "window lost focus");
             _Window.Resize += _OnResize;
             // The framebuffer can change without the logical size changing (desktop scaling switched,
             // window moved to a monitor with a different scale), and Resize does not fire then.

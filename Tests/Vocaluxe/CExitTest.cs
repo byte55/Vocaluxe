@@ -130,6 +130,34 @@ namespace Tests.Vocaluxe
         }
 
         [Test]
+        public void ContextShowsWhatTheWindowReceivedRaw()
+        {
+            CExit.NoteRawKey("LeftAlt down +Alt");
+            CExit.NoteRawKey("F4 down +Alt");
+            CExit.NoteRawKey("window lost focus");
+
+            string context = CExit.Context();
+
+            StringAssert.Contains("rawWindowEvents=[LeftAlt down +Alt @", context);
+            StringAssert.Contains("F4 down +Alt", context);
+            StringAssert.Contains("window lost focus", context);
+        }
+
+        [Test]
+        public void RawWindowEventsKeepOnlyTheLastTwelve()
+        {
+            for (int i = 0; i < 30; i++)
+                CExit.NoteRawKey("key" + i);
+
+            string raw = CExit.Context();
+            raw = raw.Substring(raw.IndexOf("rawWindowEvents=[", StringComparison.Ordinal));
+
+            Assert.AreEqual(12, raw.Split(new[] {" @"}, StringSplitOptions.None).Length - 1);
+            StringAssert.Contains("key29", raw);
+            StringAssert.DoesNotContain("key17 ", raw);
+        }
+
+        [Test]
         public void ContextNamesTheWebRemoteKey()
         {
             CExit.NoteRemoteKey("return");
