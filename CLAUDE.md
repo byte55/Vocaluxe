@@ -885,8 +885,18 @@ Beenden meldet sich dort, der erste gewinnt:
 | `Previous run did not shut down cleanly` (Start des nächsten Laufs) | der Lauf davor hat keine `Shutdown complete`-Zeile geschrieben: Absturz, `kill -9` oder Stromausfall |
 
 Der Kontext jeder Zeile: Laufzeit, aktueller Screen, Zeit seit der letzten Taste bzw.
-Mausbewegung, die letzten acht Eingaben mit Modifikatoren und die letzte Taste der
-Web-Fernbedienung.
+Mausbewegung, die letzten acht Eingaben mit Modifikatoren (`recentInput`), die letzte Taste
+der Web-Fernbedienung und die **letzten zwölf rohen Fensterereignisse** (`rawWindowEvents`:
+Tastenname mit Drücken/Loslassen und Fokuswechsel, wie sie das Fenster erreichten). Das Spiel
+kennt nicht jede Taste und zeigt sie als `None`; `rawWindowEvents` sagt, welche es war.
+
+**Alt+F4 an dieser Tastatur (Logitech K400 Plus), gemessen am 2026-10-08:** Alt+F4 schließt
+Vocaluxe, wenn ein echtes F4 ankommt (dann `Exit requested: WindowClose`,
+`windowState=Fullscreen`, im `rawWindowEvents` nur `LeftAlt down` — das F4 verbraucht der
+Compositor). Alt+**Windows**+F4 dagegen kam als `LeftSuper down`, `LeftAlt down`,
+`Menu down +Alt` an, also als Taste „Menu", und schließt nichts; die F-Tasten der K400 haben
+eine Zweitbelegung, die mit Fn zusammenhängt. Zum Beenden gilt: Beenden-Button im Hauptmenü,
+oder Alt+Fn+F4.
 
 **Signale.** SIGTERM beendete Vocaluxe früher gar nicht (nach 12 s lief es noch, nur
 `kill -9` half — und hinterließ einen unsauberen Marker). Jetzt fährt es in etwa einer
