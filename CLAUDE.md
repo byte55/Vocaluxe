@@ -1548,8 +1548,8 @@ aber nicht mehr gebraucht.
 
 ## Offen
 
-- **GAIN-Regler angleichen.** Seit dem Abend 2026-09-18 sind beide Mikrofoneingänge des UR22 in
-  Benutzung. Eine Kanaltrennung ist nicht einzustellen, die liefert die Hardware. Beide
+- **GAIN-Regler angleichen.** Am Abend 2026-09-18 waren beide Mikrofoneingänge des UR22 in
+  Benutzung (die Mikrofone stecken nur an Karaoke-Abenden, sonst sind die Eingänge stumm). Eine Kanaltrennung ist nicht einzustellen, die liefert die Hardware. Beide
   GAIN-Regler gehören auf ähnliche Pegel, damit Vocaluxe die Spieler gleich bewertet.
 - **Pegel final einstellen**: beim *Singen* justieren, nicht beim Sprechen —
   Sprechen ist deutlich leiser und führt zu einer zu hohen Einstellung, die
