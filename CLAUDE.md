@@ -319,9 +319,11 @@ wieder eine `FeatureUnavailable`-Meldung dahintersteckt.
 
 Liegt **nicht** im Repo, sondern unter `~/.config/Vocaluxe/`:
 
-- `Config.xml` — u. a. die `SongFolder`-Einträge. Die echte Bibliothek ist
-  `~/UltraStar Songs` (Leerzeichen im Pfad, immer quoten). Die beiden
-  Standard-Einträge daneben sind leer und harmlos.
+- `Config.xml` — u. a. die `SongFolder`-Einträge. Die Bibliothek besteht aus
+  `~/UltraStar Songs` (Leerzeichen im Pfad, immer quoten) und `/mnt/usb/Songs`, siehe „Zweite
+  Bibliothek: die USB-Platte". Die beiden Standard-Einträge daneben sind leer und harmlos.
+  Fehlt ein Ordner, steht `Song folder not found, skipping it` im Log; früher übersprang
+  Vocaluxe ihn ohne jede Meldung.
 - `Logs/Vocaluxe.log` — Vocaluxes eigenes Log; die 50 letzten Läufe bleiben als
   `Vocaluxe_1.log` … `_50.log` liegen. Das Programm schreibt Fehler **nur** hierhin,
   nicht nach stdout/stderr.
@@ -342,6 +344,32 @@ Liegt **nicht** im Repo, sondern unter `~/.config/Vocaluxe/`:
 `Renderer` in der `Config.xml` kennt unter Linux nur `TR_CONFIG_OPENGL` und
 `TR_CONFIG_SOFTWARE`. Direct3D steht im Enum hinter `#if WIN` und existiert
 hier nicht.
+
+### Zweite Bibliothek: die USB-Platte
+
+Die Songs liegen auf zwei Datenträgern: der lokalen SSD (`~/UltraStar Songs`, 2809 Ordner) und
+einer externen NTFS-Platte (1,8 TB, Partition `/dev/sdb4`, **UUID `01D37C5534494DC0`**) mit
+`Songs/` (2821 Ordner), gemeinsam 5578 Songs. Die Platte gehört an **`/mnt/usb`**
+(`SongFolder` ist `/mnt/usb/Songs`). Der Gerätename `sdb` ist nicht stabil, deshalb nur über
+die UUID ansprechen.
+
+Zielzustand: bei jedem Boot automatisch gemountet, per `/etc/fstab` (braucht Root):
+
+```
+UUID=01D37C5534494DC0  /mnt/usb  ntfs3  ro,nofail,x-systemd.device-timeout=10s,uid=1000,gid=1000,iocharset=utf8  0  0
+```
+
+`ro`, weil Vocaluxe die Songs nur liest und eine unter Windows nicht sauber getrennte Platte
+(Dirty-Flag) so trotzdem eingebunden wird; zum Songs-Ändern `sudo mount -o remount,rw /mnt/usb`.
+`nofail` und das Timeout sorgen dafür, dass der Rechner auch ohne angesteckte Platte bootet.
+Solange der Eintrag fehlt, ist der Mount von Hand zu setzen (`sudo mount UUID=01D37C5534494DC0 /mnt/usb`
+mit denselben Optionen); GNOME mountet die Platte zwar selbst nach `/run/media/bytebeat/<UUID>`,
+aber dort sucht Vocaluxe nicht.
+
+**Fehlt der Mount, startet Vocaluxe ohne Meldung am Bildschirm mit der halben Bibliothek** (2807
+statt 5578 Songs). Deshalb prüfen `karaoke-start` und `karaoke-status.sh` vorher alle
+`SongFolder` (`~/.local/bin/karaoke-songfolders.sh`, Meldung `FEHLT:`/`LEER:`), und Vocaluxe
+selbst loggt `Song folder not found, skipping it`.
 
 ### Einzelinstanz-Schutz: Mutex und `/tmp/.dotnet/shm`
 
@@ -701,9 +729,11 @@ PIN auch **selbst keine geben**; du müsstest die Rolle wieder herausnehmen, die
 PIN setzen und die Rolle erneut eintragen. Eine gesetzte PIN lässt sich bei
 Admin-Profilen zudem nicht mehr entfernen, nur ändern.
 
-Die mitgelieferten Profile (Advanced, Beginner, Expert) liegen im
-Programmordner unter `dist/Vocaluxe/Profiles/`, selbst angelegte in
-`~/.config/Vocaluxe/Profiles/`.
+Mitgelieferte Profile gibt es nicht mehr: Beginner, Advanced und Expert
+(`guest1.xml` bis `guest3.xml`, bisher in `Output/Profiles/`) wurden am 2026-10-08 entfernt,
+sie tauchten bei Gästen nur als verwirrende Auswahl auf. Im Programmordner
+`dist/Vocaluxe/Profiles/` liegen seitdem nur die Avatare; alle Profile entstehen in
+`~/.config/Vocaluxe/Profiles/`. Im Code wird keines der drei Profile vorausgesetzt.
 
 ### Große Songbibliothek: was dabei passiert
 
@@ -806,6 +836,14 @@ denselben Bestand, also 57× weniger — und entsprechend weniger Plattenverkehr
 Start. `DatabaseCoverVersion` steht deshalb auf 2; eine ältere Cover-Datenbank wird
 **verworfen und neu aufgebaut** (samt `VACUUM`, sonst bliebe die Datei groß) statt
 wie früher eine `NotImplementedException` zu werfen, die den Start verhindert hätte.
+
+Mit der **echten** zweiten Bibliothek (die NTFS-Platte über USB, zusammen 5578 Songs,
+gemessen 2026-09-18/19): `Read TXTs` **57 s** beim ersten Start, danach **25–29 s** bei warmem
+Dateicache — gegen 2,7 s für die 2807 lokalen Songs. Bestimmend ist der Dateicache des Kernels
+und der NTFS-Treiber, nicht der `SongInfoDB`-Cache (der hält nur die aus den Noten abgeleiteten
+Werte, der Header jeder Datei wird bei jedem Start gelesen). Das Hauptmenü kommt je nach Cache erst
+nach gut einer halben Minute bis einer Minute; die Cover-Größe sinkt dabei auf 155 px, das Working
+Set liegt im Hauptmenü bei rund 960 MB.
 
 ### Falle: der erste Start nach einem unsauberen Ende scheitert
 
@@ -1448,14 +1486,43 @@ reaper-call.py Track_GetPeakInfo 0 0        # liefert bereits dB, nicht linear
 Nützlich beim Debuggen: `reaper <skript>.lua` von der Kommandozeile führt
 das Skript in der **laufenden** Instanz aus.
 
+### Bedienung: die Web-UI „Karaoke-Mixer"
+
+Die Fader bedient man über eine eigene Seite im Browser — am Tablet oder am Rechner unter
+`http://<adresse>:8080/` (Adresse des jeweiligen Netzes, `localhost` am Rechner selbst). Reaper
+liefert sie über seine eingebaute Weboberfläche aus: `csurf_0=HTTP 0 8080 '' 'index.html' 0 ''`
+in `~/.config/REAPER/reaper.ini` (Port 8080, Seite `index.html`, Benutzer und Passwort leer).
+
+Reaper nimmt den Ordner **`~/.config/REAPER/reaper_www_root/`**, falls es ihn gibt, sonst die
+Standardseite aus `~/opt/REAPER/Plugins/reaper_www_root/`. Darin liegen zwei Dateien:
+
+- `index.html` (Titel „Karaoke-Mixer"): Fader für **Master, Mikro 1, Mikro 2 und Song** mit
+  Lautstärke in dB, Panorama und Schritttasten, ausgelegt für Touch (Tablet). Fragt `TRACK/0-3`
+  alle 300 ms ab und setzt mit `SET/TRACK/<n>/VOL/…` bzw. `…/PAN/…`. Die Spuren sind **fest
+  nummeriert** (0 Master, 1 Mikro 1, 2 Mikro 2, 3 Song) und müssen zu `Karaoke.RPP` passen;
+  der Hall (Spur 4) fehlt auf der Seite.
+- `main.js`: unveränderte Hilfsdatei von Reaper (`cmp` gegen das Original gleich), die
+  `index.html` einbindet.
+
+**Beides liegt in keinem Repo von Vocaluxe.** Gesichert wird es im Repo `~/karaoke-setup`
+(zusammen mit `reaper.ini`, dem Projekt, den Reaper-Skripten, der Audio-Konfiguration, den
+Starter-Skripten, den Desktop-Startern und der `CLAUDE.md` des Rechners): `./backup.sh` kopiert
+den Live-Stand hinein und committet, `./restore.sh` spielt ihn zurück. Wer die Seite ändert,
+ruft danach `backup.sh` auf. Das Repo ist bisher **nur lokal**; ein Plattenschaden nähme beides
+mit.
+
+**Zugangsschutz gibt es keinen.** Reaper lauscht auf allen Schnittstellen (`0.0.0.0:8080`), im
+Netz am Veranstaltungsort kann jeder, der die Adresse kennt, die Fader bedienen. Abhilfe wäre
+ein Passwort in den Weboberflächen-Einstellungen von Reaper (Preferences → Control/OSC/web) oder
+eine `ufw`-Regel nur für das Netz des Tablets, wie beim Remote-Desktop. Bewusst vertagt (2026-10-08).
+
 ### Bedienpult: abgebaut
 
 Vom 2026-09-15 bis 2026-10-08 steuerte ein **Korg nanoKONTROL Studio** per
 Bluetooth (Mackie Control) die drei Fader. Abgebaut, weil die BLE-Verbindung
 im Betrieb träge war und wiederholt ausfiel — unabhängig vom in diesem
 Dokument an anderer Stelle beschriebenen Vocaluxe-Absturzverhalten. Das
-Mischpult läuft seitdem über **Reapers eigenes Web-UI** (`csurf_0=HTTP` in
-`reaper.ini`, erreichbar unter `http://localhost:8080`, `index.html`). Die
+Mischpult läuft seitdem über **Reapers eigenes Web-UI** (siehe oben, „Karaoke-Mixer"). Die
 ganze Firmware-/Pairing-/Keepalive-Fehlersuche vom Korg ist damit hinfällig
 und aus dieser Doku entfernt; der USB-Bluetooth-Dongle steckt noch, wird
 aber nicht mehr gebraucht.
@@ -1481,21 +1548,26 @@ aber nicht mehr gebraucht.
 
 ## Offen
 
-- **Zweites Mikrofon** noch nicht angeschlossen. Vorhanden ist bisher ein
-  t.bone MB 45 II, damit sind beide Eingänge des UR22 einzeln geprüft. Eine
-  Kanaltrennung ist nicht einzustellen, die liefert die Hardware. Sobald das
-  zweite Mikrofon da ist, beide GAIN-Regler auf ähnliche Pegel bringen, damit
-  Vocaluxe die Spieler gleich bewertet.
+- **GAIN-Regler angleichen.** Seit dem Abend 2026-09-18 sind beide Mikrofoneingänge des UR22 in
+  Benutzung. Eine Kanaltrennung ist nicht einzustellen, die liefert die Hardware. Beide
+  GAIN-Regler gehören auf ähnliche Pegel, damit Vocaluxe die Spieler gleich bewertet.
 - **Pegel final einstellen**: beim *Singen* justieren, nicht beim Sprechen —
   Sprechen ist deutlich leiser und führt zu einer zu hohen Einstellung, die
   dann beim Singen clippt. Zielbereich 60–70 % Spitze.
-- **Den Reaper-Aufbau im Betrieb erproben.** Verkabelung, Umschalten und die
-  drei Fader sind geprüft, ein Testton läuft nachweislich durch Spur 3 bis in
-  den Master. Was **noch niemand gehört hat**, ist ein Abend damit: ob die
-  Latenz beim Selbsthören über die PA erträglich ist (Quantum 256 = 5,8 ms je
-  Block, Round-Trip ungemessen), ob es bei laufendem Video knackst, und ob
-  der Moduswechsel unter Zeitdruck wirklich in zwei Klicks sitzt. Bis dahin
-  ist `direct` die Betriebsart, auf die im Zweifel zurückzufallen ist.
+- **Der Reaper-Aufbau ist im Betrieb erprobt** (Abend 2026-09-18, Gäste, zwei Mikrofone, drei
+  Fader). Die Ausfälle dieses Abends waren **Hardware**, nicht Software. Kein Ton aus der Anlage:
+  Reaper, Routing und PipeWire-Sink waren in Ordnung (Pegel am Master, Testton auf den UR22-Sink
+  lief fehlerfrei durch), **auch der PHONES-Ausgang des UR22 blieb stumm**, und nach einem
+  Kabeltausch ging es wieder. Welches Kabel das war, wurde nicht festgehalten; dass selbst PHONES
+  stumm war, spricht für das **USB-Kabel zum UR22** statt für das Kabel zur Anlage. Später
+  „erst Aussetzer, dann ganz weg" nach dem Muster eines Wackelkontakts, und Mikrofon 2 war
+  zeitweise ohne Signal am Eingang (Mikrofon und Kabel getauscht, danach ok). **Ersatzkabel für USB
+  (UR22), Ausgang zur Anlage und Mikrofone gehören in die Tasche.** Offen bleibt die Latenz beim
+  Selbsthören über die PA (Quantum 256 = 5,8 ms je Block, Round-Trip ungemessen).
+- **USB-Platte beim Boot einbinden** (`/etc/fstab`-Zeile oben unter „Zweite Bibliothek").
+- **Das Web-UI hat keinen Zugangsschutz** (siehe „Reaper fernsteuern") — am Veranstaltungsort
+  im fremden Netz entweder in Reaper ein Passwort setzen oder den Port per `ufw` auf das Netz des
+  Tablets beschränken. Bewusst vertagt.
 - **Mikrofonverzögerung neu einmessen**, getrennt für beide Betriebsarten.
   `<MicDelay>` steht auf 200 ms und stammt aus dem alten Aufbau; der
   Delay-Test im Aufnahme-Screen liefert den richtigen Wert.
