@@ -349,7 +349,7 @@ hier nicht.
 
 Die Songs liegen auf zwei Datenträgern: der lokalen SSD (`~/UltraStar Songs`, 2809 Ordner) und
 einer externen NTFS-Platte (1,8 TB, Partition `/dev/sdb4`, **UUID `01D37C5534494DC0`**) mit
-`Songs/` (2821 Ordner), gemeinsam 5578 Songs. Die Platte gehört an **`/mnt/usb`**
+`Songs/` (2821 Ordner, 110 GB), gemeinsam 5578 Songs und 164 GB (lokal 54 GB, gemessen 2026-10-08). Die Platte gehört an **`/mnt/usb`**
 (`SongFolder` ist `/mnt/usb/Songs`). Der Gerätename `sdb` ist nicht stabil, deshalb nur über
 die UUID ansprechen.
 
