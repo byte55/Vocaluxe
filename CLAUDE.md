@@ -322,9 +322,16 @@ Liegt **nicht** im Repo, sondern unter `~/.config/Vocaluxe/`:
 - `Config.xml` — u. a. die `SongFolder`-Einträge. Die echte Bibliothek ist
   `~/UltraStar Songs` (Leerzeichen im Pfad, immer quoten). Die beiden
   Standard-Einträge daneben sind leer und harmlos.
-- `Logs/Vocaluxe.log` — die einzige brauchbare Fehlerquelle. Das Programm
-  schreibt **nichts** nach stdout/stderr und beendet sich bei einem Absturz
-  mit Exit-Code 0. Ein stiller, schneller Exit heißt also nicht „ok".
+- `Logs/Vocaluxe.log` — Vocaluxes eigenes Log; die 50 letzten Läufe bleiben als
+  `Vocaluxe_1.log` … `_50.log` liegen. Das Programm schreibt Fehler **nur** hierhin,
+  nicht nach stdout/stderr.
+- `Logs/launcher.log`, `Logs/stderr/`, `Dumps/` — was der Launcher `dist/Vocaluxe.sh`
+  von außen aufzeichnet: Start/Ende jedes Laufs mit Exit-Code und Signal, alles was
+  die App auf stdout/stderr schreibt (native Bibliotheken, .NET-Runtime) und .NET-
+  Crash-Dumps. Details unter „Falle: Vocaluxe kann auch im laufenden Betrieb
+  lautlos verschwinden".
+- `Logs/Marker` — liegt nur **während** eines Laufs da. Findet der nächste Start
+  einen vor, war der Lauf davor unsauber beendet; das steht dann als Warnung im Log.
 - `Logs/Song.log` — Parser-Warnungen zu einzelnen Songdateien. Seit dem
   Noten-Cache stehen dort nur noch Songs, die wirklich gelesen wurden — nach dem
   ersten Start also fast nichts mehr.
@@ -337,6 +344,15 @@ Liegt **nicht** im Repo, sondern unter `~/.config/Vocaluxe/`:
 hier nicht.
 
 ### Abgebrochener Prozess blockiert den nächsten Start
+
+> **Korrektur vom 2026-10-08:** Der hier beschriebene stille Fehlstart nach hartem
+> Beenden hat eine andere Ursache — den Crash-Marker, siehe „Falle: der erste Start
+> nach einem unsauberen Ende scheitert". Nachgestellt: Vier nach `kill -9` liegen
+> gebliebene `session<PID>`-Verzeichnisse unter `/tmp/.dotnet/shm` haben den nächsten
+> Start **nicht** verhindert. Dass `rm -rf /tmp/.dotnet/shm` „half", lag daran, dass der
+> fehlgeschlagene Start den Marker nebenbei gelöscht hatte. Ob die weiter unten
+> genannte `global/*.server`-Variante unabhängig davon klemmen kann, ist nicht
+> nachgestellt; der Befehl schadet nicht.
 
 Die Single-Instance-Sperre ist ein benannter Mutex, den .NET unter Linux als
 Datei unter `/tmp/.dotnet/shm/` ablegt. Wird der Prozess **hart beendet**
@@ -389,9 +405,29 @@ Der Entwurf, die Messungen und alle Design-Entscheidungen stehen in
 - **Gäste dürfen sich selbst anlegen.** Neue Profile landen als
   `TR_USERROLE_GUEST` in `~/.config/Vocaluxe/Profiles/` und sammeln sich dort
   über mehrere Events an; gelegentlich aufräumen.
-- **Profilbilder nur aus dem mitgelieferten Bestand.** Zur Auswahl stehen die 23
+- **Profilbilder nur aus dem mitgelieferten Bestand.** Zur Auswahl stehen die
   Avatare aus `Profiles/Vocaluxe Avatars 2024 (Official)/`, wählbar beim Anlegen
-  und im Tab „Ich". **Es gibt keinen Upload-Weg** — die `/api`-Oberfläche bietet
+  und im Tab „Ich". Ursprünglich 23 (19 benannte + 4 Gast), seit 2026-09-18
+  **63** (19 + 40 neue + 4 Gast) — die ursprünglichen sind fotorealistische
+  Freisteller aus einem lizenzierten Bestand, echte Personen. Für Nachschub
+  gilt das nicht mehr unbedenklich: Fotos "freier" Gesichter (auch KI-generierte)
+  tragen trotz freier Bildlizenz oft weiter Persönlichkeitsrechte, die sich nicht
+  einfach wegwünschen lassen — riskant für ein öffentlich gepushtes Repo. Die 40
+  neuen sind deshalb **illustriert statt fotorealistisch**: Stil „Avataaars" von
+  [DiceBear](https://www.dicebear.com/) (Original: Pablo Stanley,
+  [avataaars.com](https://avataaars.com/)), Lizenz **„frei für private und
+  kommerzielle Nutzung"** mit Namensnennung — keine reale Person, also kein
+  Persönlichkeitsrechte-Thema, nur die Zuschreibung an Pablo Stanley/Avataaars
+  gehört irgendwo hin (z. B. Credits-Bildschirm, noch nicht angelegt). Erzeugt
+  per HTTP-API (`api.dicebear.com/10.x/avataaars/png?seed=<Name>&size=256`,
+  256×256 statt 500×500 — die kostenlose API deckelt dort). Ein erster Versuch
+  mit dem CC0-Stil „Open Peeps" (keine Namensnennung nötig) wurde wieder
+  verworfen — optisch nicht überzeugend — und komplett durch Avataaars ersetzt,
+  damit der Zuwachs stilistisch einheitlich bleibt. Bricht optisch mit dem
+  Foto-Stil der ersten 23, ist dafür aber das einzige Kontingent, das sich
+  risikofrei beliebig erweitern lässt: derselbe Aufruf mit neuem `seed` liefert
+  einen neuen, deterministisch reproduzierbaren Avatar. **Es gibt keinen
+  Upload-Weg** — die `/api`-Oberfläche bietet
   keinen an. Historisch: Zuerst wurden die beiden alten Wege abgeschaltet
   (`/sendPhoto` antwortete mit 403, `/sendProfile` ignorierte mitgeschickte
   Bilder — dort nahm der Server vorher *ohne jede Session* ein beliebiges Bild
@@ -548,6 +584,43 @@ bzw. hart wegfällt):
 | hart weggefallener Relay erkannt | sofort |
 | wieder angemeldet, **ohne Neustart** | 4 s später |
 | Raumcode danach | unverändert, weil die `RemoteAgentId` gleich bleibt |
+
+#### Falle: WLAN-Adresskonflikt (ACD) macht die Warteliste für ~19 Minuten unerreichbar
+
+Post-Mortem vom 2026-09-18/19: Gleich beim Hochfahren für den Spielbetrieb
+(22:46 Uhr) bekam der Rechner im Veranstaltungs-WLAN (`caffeebabe_Wi-Fi5`)
+**von 22:46:10 bis 23:05:06 Uhr, also knapp 19 Minuten**, gar keine
+brauchbare IPv4-Adresse — damit war weder die lokale Weboberfläche noch der
+Relay-Weg für Gäste erreichbar.
+
+`journalctl -u NetworkManager` zeigt die Ursache eindeutig: Der Router hat
+zehnmal hintereinander dieselbe Adresse angeboten (`192.168.3.48`), und
+NetworkManagers Adresskonflikt-Erkennung (ACD) hat sie jedes Mal abgelehnt
+(`state changed new lease, address=192.168.3.48, acd conflict`) — ein
+**anderes Gerät im selben Netz hatte zu dem Zeitpunkt bereits genau diese
+Adresse**, vermutlich ein Gästehandy über die Warteliste. Eine echte
+Link-Local-Fallback-Adresse (`169.254.x.x`) gab es dabei **nicht** — der
+Rechner hatte in dem Fenster schlicht gar keine IPv4-Adresse, keine
+„DNS-Fallback-Adresse".
+
+Um 23:05:14 Uhr hat der Router dann eine andere Adresse aus einem **anderen
+Subnetz** vergeben (`10.25.128.58` statt `192.168.3.x`), die sofort
+akzeptiert wurde — danach lief es für den Rest des Abends mit
+turnusmäßigen Lease-Erneuerungen alle 30 Minuten sauber durch.
+
+**192.168.3.48 war dieselbe Adresse, die der Rechner schon am Nachmittag
+desselben Tages in diesem Netz hatte** — DHCP-Clients fragen beim
+Neuverbinden typischerweise ihre alte Adresse erneut an, und die war
+inzwischen vergeben. Das ist ein Adresskonflikt am Router der
+Veranstaltungstechnik, kein Fehler hier — aber man muss nicht erst den
+automatischen Retry-Zyklus abwarten:
+
+```bash
+nmcli con down caffeebabe_Wi-Fi5 && nmcli con up caffeebabe_Wi-Fi5
+```
+
+Das erzwingt sofort eine neue DHCP-Anfrage (und damit meist eine andere,
+freie Adresse), statt auf den nächsten automatischen Versuch zu warten.
 
 ### Am Bildschirm: wer als Nächstes dran ist
 
@@ -738,14 +811,77 @@ Start. `DatabaseCoverVersion` steht deshalb auf 2; eine ältere Cover-Datenbank 
 **verworfen und neu aufgebaut** (samt `VACUUM`, sonst bliebe die Datei groß) statt
 wie früher eine `NotImplementedException` zu werfen, die den Start verhindert hätte.
 
-### Falle: der erste Start nach einem Build scheitert oft
+### Falle: der erste Start nach einem unsauberen Ende scheitert
 
-Mehrfach beobachtet: direkt nach `./.build/build-linux.sh` beendet sich der
-erste Start sofort mit Exit-Code 0 — kein Fenster, keine Ausgabe, **kein**
-Log-Eintrag, und anders als bei der Mutex-Falle liegt auch nichts in
-`/tmp/.dotnet/shm`. Der zweite Start läuft dann normal. Ursache ungeklärt; wer
-automatisiert testet, sollte einen Startversuch einkalkulieren statt daraus auf
-einen kaputten Build zu schließen.
+**Behoben am 2026-10-08.** Symptom, mehrfach beobachtet: Der Start endet sofort mit
+Exit-Code 0 — kein Fenster, keine Ausgabe, **kein** Log-Eintrag. Der zweite Start
+läuft normal.
+
+Ursache: `CLog.Init` legt beim Start die Datei `Logs/Marker` an, `CLog.Close()`
+löscht sie beim sauberen Beenden. Findet der nächste Start einen Marker vor, rief er
+den Reporter-Delegate `_ShowReporterFunc` auf — der ist seit dem Cross-Platform-Port
+`null`, der Aufruf stand ohne `?.`. Die `NullReferenceException` fing
+`Program._Run` ab, **bevor der Logger existierte** (also ohne Eintrag), und
+`_CloseProgram()` beendete das Programm mit `Environment.Exit(0)`. Der Fehlversuch
+hatte den Marker bereits gelöscht, deshalb ging der zweite Start. Nachgestellt, indem
+der Marker von Hand angelegt wurde; abgesichert durch `Tests/VocaluxeLib/Log/CLogMarkerTest`.
+
+Der Fix: `?.Invoke`, dazu eine **Warnung im Log** („Previous run did not shut down
+cleanly") mit dem Inhalt des Markers — Version, PID, Startzeit und Boot-ID des
+toten Laufs. Ein stiller Fehlstart war also nie Zufall, sondern der Hinweis, dass der
+Lauf davor **unsauber** geendet hat (Absturz, `kill -9`, Stromausfall). Builds vor dem
+Fix verhalten sich weiter so. Der Retry im Starter `karaoke-start` bleibt als
+harmloses Sicherheitsnetz stehen.
+
+### Falle: Vocaluxe kann auch im laufenden Betrieb lautlos verschwinden
+
+Post-Mortem vom 2026-09-18/19 (Spielbetrieb mit echten Gästen, 22:45 bis 01:08 Uhr):
+Vocaluxe ist über den Abend mehrfach verschwunden — rekonstruiert über die von GNOME
+vergebenen `xdg_surface`-IDs waren es 9 Prozessstarts. Die Ursache ist **ungeklärt**.
+
+Was ausgeschlossen ist: Kernel-OOM, `systemd-oomd`-Kill, Segfault, Thermal-Throttling.
+Was **nicht** ausgeschlossen ist, obwohl es zuerst so aussah: SIGABRT und jeder
+Exit-Code. Das Journal sieht beides bei einem gewöhnlichen Benutzerprozess nicht, und
+`apport` ignoriert Binaries ohne Paket. „Kein Signal im Journal" beweist deshalb nichts.
+
+Ein Teil der Abende lässt sich nachträglich trennen, und zwar über den Marker (siehe
+oben): Scheiterte der erste Start nach dem Verschwinden, war das Ende **unsauber**;
+startete er sofort, war es **sauber** (Fenster geschlossen, Beenden im Menü). Beides
+kam in der Nacht vor — die „Abstürze" waren also eine Mischung.
+
+**Was seit 2026-10-08 aufgezeichnet wird.** Der Launcher `dist/Vocaluxe.sh`
+(Quelle: `.build/vocaluxe-launcher.sh`, wird von `build-linux.sh` installiert) läuft
+nicht mehr per `exec`, sondern als Elternprozess und hält fest:
+
+| Wo | Was |
+|---|---|
+| `Logs/launcher.log` und `journalctl -t vocaluxe` | Start und Ende jedes Laufs: PID, Laufzeit, Exit-Code, Signalname, ggf. Dump-Dateien |
+| `Logs/stderr/vocaluxe-<Zeit>.log` | alles auf stdout/stderr, die letzten 50 Läufe |
+| `Dumps/` | .NET-Crash-Dump (~0,9 GB) plus `.crashreport.json` mit Stacktraces, die letzten 3 |
+| `Logs/Vocaluxe.log` | Warnung „Previous run did not shut down cleanly" mit PID des toten Laufs |
+
+Exit-Codes lesen: **0** = die App ging ihren eigenen Beenden-Pfad (Menü, Fenster zu,
+abgefangener Startfehler); **134** SIGABRT (.NET-Fail-Fast); **139** SIGSEGV (Absturz in
+nativem Code); **137** SIGKILL (`kill -9`, OOM-Killer); **143** SIGTERM.
+
+Nach einem Vorfall zuerst, **bevor** neu gestartet wird (neue Starts rollen die Logs):
+
+```bash
+tail ~/.config/Vocaluxe/Logs/launcher.log      # Exit-Code/Signal des letzten Laufs
+ls -t ~/.config/Vocaluxe/Dumps/ | head         # gab es einen Dump?
+```
+
+Zwei Befunde nebenbei: **SIGTERM beendet Vocaluxe nicht** (nach 12 s lief es noch; es
+braucht `kill -9`, was wiederum einen unsauberen Marker hinterlässt). Und per `kill -ABRT`
+bzw. `-SEGV` von außen geschickt, schreibt .NET zwar Dump und Crash-Report, **hängt
+danach aber** (`futex_do_wait`), statt zu enden — ein echter Absturz verhält sich evtl.
+anders, die Kreuzprobe steht aus.
+
+Noch offen: Vocaluxe selbst schreibt nicht, **warum** es endet (Menü-Beenden,
+Fenster-Close-Request, Signal). Alt+F4 kommt unter GNOME/Wayland nur als
+`xdg_toplevel.close` an, ist also vom Klick aufs Fenster-X nicht zu unterscheiden.
+Geplant: Beenden-Gründe loggen, SIGTERM/SIGINT/SIGHUP sauber behandeln, Herzschlag-Zeile
+mit letztem bekannten Zustand.
 
 ### Falle: VSync + minimiertes Fenster killt den Webserver
 
@@ -792,18 +928,26 @@ Welche Nodes dabei entstehen, hängt am **Profil** des Geräts
 
 | Profil | Nodes | brauchbar für |
 |---|---|---|
-| 1 `HiFi` (Standard) | zwei **Mono**-Quellen `…HiFi__Line2__source` / `…Line3__source`, Sink `…HiFi__Line1__sink` | normalen Desktop-Betrieb |
-| 3 `Pro Audio` | ein 2-Kanal-Paar `…pro-input-0:capture_AUX0/AUX1`, Sink `…pro-output-0:playback_AUX0/AUX1` | DAW/Patchbay |
+| 1 `HiFi` | zwei **Mono**-Quellen `…HiFi__Line2__source` / `…Line3__source`, Sink `…HiFi__Line1__sink` | normalen Desktop-Betrieb |
+| 3 `Pro Audio` | ein 2-Kanal-Paar `…pro-input-0:capture_AUX0/AUX1`, Sink `…pro-output-0:playback_AUX0/AUX1` | alles hier |
 
-Umgeschaltet wird mit `~/.local/bin/karaoke-mode.sh` (siehe Reaper-Abschnitt);
-im Normalbetrieb steht das Gerät auf `HiFi`. Unter `HiFi` splittet das UCM-Profil die Eingänge in zwei
-getrennte Mono-Quellen, und der Stereo-Node ist `Audio/Source/Internal` — er
-lässt sich dann *nicht* als Standardquelle wählen, was Anwendungen mit
-Stereo-Eingang auf Mono festnagelt. Genau daran scheitert der DAW-Betrieb unter
-`HiFi`.
+**Das Gerät steht dauerhaft auf `pro-audio`** und wird nicht mehr
+umgeschaltet. Nur dort liegen die beiden Eingänge als getrenntes Paar an,
+und nur so bleibt Vocaluxes Aufnahmegerät über beide Betriebsarten dasselbe
+— ein Wechsel mitten im Abend braucht damit weder einen Neustart noch einen
+Griff in die Optionen.
 
-Vocaluxe greift ohne DAW im Weg gar nicht auf diese Nodes zu, sondern über
-PortAudio/ALSA direkt auf `hw:2,0`.
+Der frühere Wechsel zwischen `HiFi` und `Pro Audio` hatte einen Grund: Unter
+`Pro Audio` lässt WirePlumber das Gerät dauerhaft geöffnet, und PortAudio
+listet ein `hw:`-Gerät nur, wenn es sich zum Prüfen öffnen lässt — **das UR22
+verschwand dadurch komplett aus Vocaluxes Geräteliste**. Das sah aus wie ein
+defektes Interface und war nur das Profil. Hinfällig ist es, seit Vocaluxe
+nicht mehr über `hw:…` hört, sondern über die PulseAudio-Host-API (siehe
+unten).
+
+**Die ALSA-Kartennummer ist nicht stabil.** Früher stand hier `hw:2,0`,
+inzwischen ist das UR22 Karte 1 (`/proc/asound/cards`). Deshalb steht in
+Konfigurationen nirgends mehr eine Kartennummer.
 
 Pegel prüfen ohne Vocaluxe:
 
@@ -821,19 +965,119 @@ mit `~/Desktop/messung.sh`, das eine Live-Aussteuerungsanzeige zeigt.
 Dinge gesetzt: **Soundkarte** (für beide dieselbe) und **Eingang**, also die
 Kanalnummer.
 
-| | Gerät | Kanal | am UR22 |
-|---|---|---|---|
-| Spieler 1 | `Steinberg UR22mkII: USB Audio (hw:2,0)` | **1** | INPUT 1 |
-| Spieler 2 | `Steinberg UR22mkII: USB Audio (hw:2,0)` | **2** | INPUT 2 |
+Konkret: **„Soundkarte"** auf `karaokemics`, dann **„Spieler 1"** auf `1`
+und **„Spieler 2"** auf `2`.
 
-Die Kanalnummer zählt **pro Gerät**, nicht durchlaufend über alle Geräte —
-INPUT 2 ist also Kanal 2, nicht Kanal 4.
+| Slide | Wert |
+|---|---|
+| Soundkarte | `karaokemics` |
+| Spieler 1 | **1** — UR22 INPUT 1 |
+| Spieler 2 | **2** — UR22 INPUT 2 |
 
-Die Automatik trifft diesen Fall von selbst: `CConfig.AutoAssignMics` sucht ein
-Aufnahmegerät, dessen Name auf `Usb|Wireless` passt (mit `IgnoreCase`), und legt
-bei mindestens zwei Kanälen Spieler 1 auf Kanal 1 und Spieler 2 auf Kanal 2
-(`Vocaluxe/Base/CConfig.cs:721`). „Steinberg UR22mkII: USB Audio" enthält
-„USB", passt also.
+**Die Slides sind nach Spieler benannt, ihr Wert ist die Kanalnummer** (oder
+„Aus"). Nicht andersherum — es gibt nur *ein* Gerät-Slide für alle Spieler,
+und die Kanalnummer zählt pro Gerät: INPUT 2 ist Kanal 2, nicht Kanal 4.
+
+#### Warum ein eigenes ALSA-Gerät nötig ist
+
+**Vocaluxe bringt seine eigene PortAudio mit, und die kennt nur ALSA.** Sie
+kommt als NuGet-Paket `org.k2fsa.portaudio.runtime.linux-x64` und liegt als
+`libportaudio.so` neben der Anwendung — nicht zu verwechseln mit der
+System-Bibliothek `libportaudio2`, die sehr wohl eine PulseAudio-Host-API hat.
+Wer mit der falschen von beiden misst, sieht eine Geräteliste, die es in
+Vocaluxe nie gibt. In der Praxis stehen dort nur vier Einträge: `HDA Intel
+PCH`, `sysdefault`, `pipewire` und `default`.
+
+Damit fallen zwei naheliegende Wege aus:
+
+- **PipeWire-Quellen wie `KaraokeVocals.monitor` erscheinen nicht.** Die
+  gibt es nur über die PulseAudio-Host-API, die diese Bibliothek nicht hat.
+- **`hw:1,0` erscheint auch nicht.** Im Pro-Audio-Profil hält PipeWire die
+  Karte dauerhaft offen, und PortAudio listet ein `hw:`-Gerät nur, wenn es
+  sich zum Prüfen öffnen lässt.
+
+Bleibt PipeWires ALSA-Plugin. `pipewire` und `default` melden allerdings
+**128 Kanäle**, und Vocaluxe öffnet den Stream mit
+`channelCount = device.Channels` (`CPortAudioRecord.Start`) — also mit 128.
+
+Deshalb steht in **`~/.asoundrc`** ein eigenes PCM mit fest zwei Kanälen, das
+direkt auf den UR22-Eingang zeigt:
+
+```
+pcm.karaokemics {
+    type pipewire
+    capture_node "alsa_input.usb-…Steinberg_UR22mkII-00.pro-input-0"
+    playback_node "-1"
+    channels 2
+    hint { show on  description "Karaoke Mics (UR22 INPUT 1+2)" }
+}
+```
+
+Nachgemessen: erscheint in Vocaluxes Geräteliste mit **2 Kanälen**, beide
+führen getrennt Signal (−77,5 und −72,7 dBFS Grundrauschen).
+
+Das Gerät geht **an Reaper vorbei** direkt auf die Hardware-Eingänge. Es
+liegt damit in beiden Betriebsarten an, Vocaluxe bekommt immer das rohe
+Signal, und ein Reaper-Absturz kostet nicht die Tonhöhenerkennung.
+
+Am Hardware-Eingang hängen also **zwei unabhängige Abnehmer** — nachgesehen
+im Graphen, während beide liefen:
+
+```
+UR22 INPUT 1 ─┬─► REAPER:in1                    → Fader → Master → Anlage
+              └─► alsa_capture (karaokemics)    → Vocaluxe, Bewertung
+```
+
+Daraus folgt, welcher Regler worauf wirkt. Das ist im Betrieb die wichtigste
+Tabelle des ganzen Aufbaus:
+
+| Regler | Anlage | Bewertung in Vocaluxe |
+|---|---|---|
+| **GAIN 1 / GAIN 2** am UR22 | ja | **ja** |
+| **Fader** in Reaper | ja | nein |
+| **`MicAmplify`** in Vocaluxe | nein | ja |
+
+Heißt konkret: Wer einen Sänger in der PA leiser dreht, tut das gefahrlos am
+Reaper-Fader. Wer am GAIN dreht, ändert **auch** die Bewertung — deshalb wird
+der Vorverstärker einmal richtig eingestellt und danach in Ruhe gelassen.
+
+Gemessen zur Gegenprobe: Song-Fader von 0 auf −20 dB → Master von −10,3 auf
+−29,2 dB. Der Fader wirkt also voll auf den Weg zur Anlage; was Vocaluxe
+hört, bleibt davon unberührt.
+
+**`~/.asoundrc` wird beim Prozessstart gelesen.** Ändert sich die Datei,
+sieht eine laufende Vocaluxe-Instanz davon nichts — erst nach einem Neustart.
+
+**Die Automatik ist hier eine Falle.** `CConfig.AutoAssignMics`
+(`Vocaluxe/Base/CConfig.cs:722`) nimmt das **erste** Aufnahmegerät, dessen
+Name auf `Usb|Wireless` passt (`IgnoreCase`) und mindestens zwei Kanäle hat.
+Auf „usb" passt aber auch
+`alsa_output.usb-…pro-output-0.monitor` — der **Ausgangs**-Monitor, und der
+steht in der PortAudio-Liste *vor* dem Eingang. Vocaluxe würde sich dann
+selbst zuhören und den Songton als Gesang bewerten. Die Automatik greift nur,
+wenn gar keine gültige Zuordnung existiert (`CScreenLoad.OnShow`) — genau das
+passiert aber, sobald sich das konfigurierte Gerät nicht mehr findet.
+
+Deshalb steht die Zuordnung explizit in der `Config.xml`. Sie enthält
+allerdings den **PortAudio-Index** (`DeviceDriver` ist `Name + Index`,
+`CPortAudioRecord.Init`), und der verschiebt sich, sobald irgendein Gerät
+dazukommt oder wegfällt — ein Bluetooth-Kopfhörer reicht, ein Profilwechsel
+am UR22 auch. Von Hand in die `Config.xml` geschrieben ist der Index deshalb
+bestenfalls eine Vermutung.
+
+**Und dann beißt das Speicherverhalten des Screens.** `_UpdateChannels` ruft
+am Ende `_SaveMicConfig` auf — **schon beim Öffnen** des Screens, ohne dass
+jemand etwas verstellt hat. `_SaveMicConfig` setzt zuerst *alle* Kanäle auf 0
+und baut sie dann allein aus dem Gerät wieder auf, das gerade im Slide steht.
+Findet `_GetFirstConfiguredRecordDevice` das konfigurierte Gerät nicht (weil
+der Index nicht mehr passt), steht dort Gerät 0 — die interne Soundkarte —
+und die Zuordnung ist im selben Moment gelöscht. Beobachtet am 2026-09-14:
+`<Channel>` stand nach einem Besuch des Screens bei beiden Spielern auf `0`.
+
+**Verlässlich wird es nur, wenn Vocaluxe die Zuordnung selbst schreibt:** im
+Screen die Soundkarte wählen und die Spieler-Slides setzen, dann steht der
+richtige Index drin. Wenn die Mikrofone also scheinbar grundlos tot sind,
+führt der Weg immer über **Optionen → Aufnahme**.
 
 Der Bildschirm zeigt je Spieler eine Pegelanzeige — damit lässt sich die
 Zuordnung gegenprüfen: beim Singen in INPUT 1 darf sich nur der Balken von
@@ -873,22 +1117,24 @@ ALSA-Host-API — also PipeWires Brücke. Wohin der Ton geht, entscheidet damit
 ausschließlich der **Standard-Sink von PipeWire**. In Vocaluxe selbst gibt es
 dafür nichts einzustellen, und es braucht auch keinen Codeeingriff.
 
-Gewünschter Ausgang steht in **`~/.config/karaoke/output-sink`**, eine Zeile mit
-einem **Teilstring des `node.name`**. Aktuell:
+**Wohin, entscheidet die Betriebsart**, und `karaoke-mode.sh` setzt es:
 
-```
-UR22mkII        # Ausgabe über das Interface
-```
+| Betriebsart | Standard-Sink | warum |
+|---|---|---|
+| `direct` | `…pro-output-0` (UR22) | Songton direkt in die Anlage |
+| `reaper` | `KaraokeSong` | Songton als dritter Fader durch Reaper |
 
-Bewusst kein exakter Name: der UR22-Sink heißt je nach Profil
-`…HiFi__Line1__sink` (Modus `direct`) oder `…pro-output-0` (Modus `daw`) — ein
-fester Eintrag überlebt den Moduswechsel nicht, `UR22mkII` passt auf beides.
-Für die Klinke am Rechner stattdessen `pci-0000_00_1b.0.analog` eintragen.
+Das Setzen des Standard-Sinks allein genügt nicht: Ein **bereits laufender**
+Vocaluxe-Stream bleibt sonst am alten Ziel kleben, und genau das darf beim
+Umschalten mitten im Abend nicht passieren. `route_playback_to` in
+`~/.local/bin/karaoke-lib.sh` hängt laufende Wiedergabe-Streams deshalb über
+`pw-metadata … target.object` aktiv mit um.
 
-`karaoke-mode.sh` stellt den passenden Sink nach jedem Moduswechsel wieder her —
-ein Profilwechsel am UR22 wirft den Standard-Sink sonst auf ein beliebiges
-Gerät. Einmalig umstellen geht auch mit `wpctl set-default <id>`, das hält aber
-nur bis zum nächsten Wechsel.
+Die frühere Datei `~/.config/karaoke/output-sink` wird **nicht mehr gelesen**.
+Sie stammt aus der Zeit, als das UR22 zwischen `HiFi` und `Pro Audio` hin und
+her geschaltet wurde und der Sink deshalb je nach Profil anders hieß.
+Für die Klinke am Rechner ginge `pci-0000_00_1b.0.analog` — dort hängt aber
+nichts, der PA-Weg ist der UR22-Ausgang.
 
 Die Buchsen des Onboard-Codecs haben Steckererkennung, sichtbar über die
 `Route`-Parameter des Geräts:
@@ -910,112 +1156,271 @@ den Standard-Sink schicken.
 Vocaluxe. Wer eine DAW dazustellt, stellt deren Projekt ebenfalls auf 44,1 kHz,
 sonst wird die ganze Kette hindurch unnötig resampelt.
 
-## Reaper als DAW im Signalweg
+## Reaper als Mischpult: drei Fader
 
-Ziel: die Mikrofone laufen durch **Reaper** (Aufnahme fürs spätere Mixing,
-Gate/EQ/Kompressor), Vocaluxe bekommt sie trotzdem für die Tonhöhenerkennung.
-Reaper liegt in `~/opt/REAPER`, benutzerlokal installiert aus dem Tarball —
-ein Repo gibt es dafür nicht.
+Ziel ist ein Mischpult für den Abend: **Mikro 1, Mikro 2 und der Songton
+getrennt regelbar**, ohne an der Anlage zu drehen. Dazu läuft alles durch
+Reaper (`~/opt/REAPER`, benutzerlokal aus dem Tarball, kein Repo).
 
-Der Trick ist ein **virtueller Sink als Übergabepunkt**. Vocaluxes
-Geräteauflistung (`CPortAudioRecord.cs:47`) nimmt jedes PortAudio-Gerät mit
-`maxInputChannels > 0`, ohne nach Host-API zu filtern, und PortAudio hat hier
-neben ALSA auch PulseAudio. Damit taucht der `.monitor` eines Null-Sinks in
-Vocaluxe als ganz normales Aufnahmegerät auf — geprüft, er meldet sich als
-`KaraokeVocals.monitor`, 2 Kanäle, 44100 Hz.
+Vocaluxe bleibt davon unberührt: Es hört die Mikrofone weiterhin direkt am
+UR22 und bekommt damit das rohe Signal für die Tonhöhenerkennung. Der
+Umweg über Reaper betrifft nur, **was in die Anlage geht**.
 
-Angelegt sind zwei Sinks in
-`~/.config/pipewire/pipewire.conf.d/20-karaoke-daw.conf`:
+### Reaper läuft über JACK, nicht über PulseAudio
 
-| Sink | Richtung | wofür |
-|---|---|---|
-| `KaraokeVocals` | Reaper → Vocaluxe | trockener Gesang, links Spieler 1, rechts Spieler 2 |
-| `KaraokeSong` | Vocaluxe → Reaper | Songwiedergabe mitschneiden (erst mit JACK nutzbar) |
+Das ist die Voraussetzung für drei Kanäle. Die PulseAudio-Anbindung
+(`linux_audio_mode=3`) kann nur Stereo — `linux_audio_nch_out=4` wird
+ignoriert — und lief hier mit **105 ms Puffer** (`QUANT 4630` bei 44100 Hz),
+für Live-Gesang unbrauchbar. `pipewire-jack` ist installiert, damit fällt
+diese Grenze weg: Reaper hat **vier Ein- und vier Ausgänge**.
+
+Vier Dinge daran sind nicht offensichtlich und haben je eine Stunde
+gekostet:
+
+- **`linux_audio_mode=0` ist JACK.** Nicht 1, nicht 2. Gemessen, indem
+  Reaper selbst gefragt wurde (`GetAudioDeviceInfo("MODE")`): `0` → `JACK`,
+  `2` → `Dummy Audio`, `3` → PulseAudio, `1` und `4` → gar kein Backend,
+  stillschweigend. In der Ultraschall-Config-Doku steht `linux_audio_mode`
+  nicht, die ist Windows-zentriert.
+- **Reaper muss über `pw-jack` starten.** Das systemweite `libjack.so.0`
+  gehört `libjack-jackd2-0` und sucht einen `jackd`, den es hier nicht gibt.
+  PipeWires eigene libjack liegt unter
+  `/usr/lib/x86_64-linux-gnu/pipewire-0.3/jack/` und wird nur über
+  `LD_LIBRARY_PATH` gefunden — genau das setzt `pw-jack`. Ohne das startet
+  Reaper ohne jedes Audiogerät, **ohne Fehlermeldung**.
+- **Aber nicht mit `pw-jack -p <n>`.** Die Option setzt `PIPEWIRE_QUANTUM`
+  und lässt `jack_client_open` mit Status `0x11`
+  (`JackFailure | JackServerFailed`) scheitern — bei *jedem* Wert, geprüft
+  mit 64, 128, 256, 512 und 1024. Ohne `-p` verbindet dieselbe Bibliothek
+  sofort. Die Puffergröße kommt deshalb vom PipeWire-Quantum, nicht von
+  Reaper.
+- **Die MIDI-Geräteliste hängt am Backend.** Im JACK-Modus führt Reaper
+  `reaper-midihw-linux.ini`, unter ALSA dagegen `reaper-midihw-alsa.ini`. Wer
+  in der falschen Datei nachsieht, findet das Gerät schlicht nicht: Die
+  ALSA-Datei kennt hier nur `virtual` und `hw:UR22mkII`, die JACK-Datei
+  dagegen sämtliche PipeWire-Ports. Dieselbe Falle
+  gilt im Fenster — was dort unter „MIDI Inputs" steht, kommt aus der Datei
+  zum gerade aktiven Backend. Einträge mit `<not present>` sind Karteileichen
+  aus früheren Sitzungen und stören nicht.
+
+Die Einstellungen stehen in `~/.config/REAPER/reaper.ini` (Abschnitt
+`[reaper]`, Reaper **überschreibt die Datei beim Beenden** — also nur
+ändern, wenn es nicht läuft):
+
+```ini
+linux_audio_mode=0        ; JACK
+linux_audio_nch_in=4
+linux_audio_nch_out=4
+audiocloseinactive=0      ; Gerät NICHT schliessen, wenn das Fenster inaktiv ist
+audioclosestop=0          ; und auch nicht, wenn der Transport steht
+```
+
+Die beiden `audioclose*` sind das Gegenstück zu Cubases „Release driver in
+background": ohne sie fällt der Ton weg, sobald Reaper minimiert wird.
 
 ### Signalweg
 
 ```
-UR22 INPUT 1 ─ capture_AUX0 ─┐
-                             ├─► REAPER  Spur 1 (hart links)  ─┐
-UR22 INPUT 2 ─ capture_AUX1 ─┘         Spur 2 (hart rechts) ──┴─► KaraokeVocals
-                                                                       │
-                                          Vocaluxe nimmt auf von ──────┘
-                                          KaraokeVocals.monitor, Kanal 1 + 2
+Betriebsart "reaper" -- alles über Reaper:
+
+  UR22 INPUT 1 ─ capture_AUX0 ─► REAPER:in1 ─► Spur 1 "Mikro 1" ─┐
+  UR22 INPUT 2 ─ capture_AUX1 ─► REAPER:in2 ─► Spur 2 "Mikro 2" ─┼─► Master
+  Vocaluxe ─► KaraokeSong ─────► REAPER:in3+4 ► Spur 3 "Song" ───┘     │
+                                                                       ▼
+                                          out1/out2 ─► UR22 Line Out ─► PA
+
+  Daneben, trocken und VOR dem Fader (Reserve, siehe unten):
+      Spur 1 ─► out3 ─► KaraokeVocals links
+      Spur 2 ─► out4 ─► KaraokeVocals rechts
+
+Betriebsart "direct" -- Rückfallweg, ohne Reaper:
+
+  UR22 INPUT 1/2 ─► Direktmonitoring im Gerät ─► Line Out ─► PA   (0 ms)
+  Vocaluxe ──────────────────────────────────► UR22 Line Out ─► PA
 ```
 
-Verkabelt wird mit **`~/.local/bin/karaoke-routing.sh`** (setzt den
-Standard-Sink aufs UR22 und legt die Links). Die Links sind nicht persistent,
-das Skript gehört nach jedem Reaper-Start noch einmal ausgeführt. Grafisch geht
-dasselbe mit `qpwgraph`.
+**Der UR22-Ausgang ist der PA-Weg**, am Klinkenausgang des Rechners hängt
+nichts. Das hat eine Konsequenz, die im Betrieb zählt: In der Betriebsart
+`reaper` läuft *auch die Musik* durch Reaper — **stürzt Reaper ab, ist die
+Anlage stumm**. Deshalb ist `direct` bewusst so gebaut, dass er ohne Reaper
+funktioniert.
 
-Das Reaper-Projekt liegt als Vorlage unter
-`~/.config/REAPER/ProjectTemplates/Karaoke.RPP`, erzeugt von
-`~/.config/REAPER/Scripts/karaoke-setup.lua` (ReaScript, ohne SWS-Erweiterung
-lauffähig). Zwei Spuren, scharfgeschaltet, Input-Monitoring an, Mono-Eingang 1
-bzw. 2, hart nach links bzw. rechts gepannt.
+### Umschalten: `~/.local/bin/karaoke-mode.sh direct|reaper`
 
-### Umschalten: `~/.local/bin/karaoke-mode.sh direct|daw`
+| | `direct` | `reaper` |
+|---|---|---|
+| Sänger hören sich | über das Gerät, **0 ms** | über den Rechner |
+| Mikropegel regeln | GAIN 1 / GAIN 2 am UR22 | drei Fader in Reaper |
+| Songpegel regeln | in Vocaluxe | Fader „Song" |
+| MIX-Regler am UR22 | Richtung **INPUT** | ganz auf **DAW** |
+| PipeWire-Quantum | frei (spart CPU) | 256 Frames = 5,8 ms |
+| Reaper nötig | nein | ja |
 
-**Falle, die einen halben Abend kosten kann:** Im Profil `Pro Audio` lässt
-WirePlumber das Gerät **dauerhaft geöffnet** (`/proc/asound/card2/pcm0c/sub0/status`
-zeigt `state: RUNNING`, Besitzer ist `pipewire`, auch wenn gar nichts läuft).
-PortAudio listet ein `hw:`-Gerät aber nur, wenn es sich zum Prüfen öffnen lässt.
-Folge: **`Steinberg UR22mkII: USB Audio (hw:2,0)` verschwindet komplett aus
-Vocaluxes Geräteliste.** Das sieht aus wie ein defektes Interface, ist aber nur
-das Profil. Reaper zu beenden reicht *nicht* — das Profil muss zurück auf
-`HiFi`, dann meldet der Status `closed` und das Gerät ist wieder da.
+Auf dem Desktop liegen dafür drei Starter (`karaoke-direct.desktop`,
+`karaoke-reaper.desktop`, `karaoke-status.desktop`).
 
-Deshalb gibt es den Umschalter:
+**Den MIX-Regler dreht kein Skript** — der ist Hardware und entscheidet, ob
+die Anlage das Mikrofon direkt hört oder nur das, was vom Rechner kommt.
+Jeder Moduswechsel sagt deshalb an, wohin er gehört.
 
-| Modus | Profil | Reaper | in Vocaluxe zu wählen |
-|---|---|---|---|
-| `direct` | `HiFi` | wird beendet | `Steinberg UR22mkII: USB Audio (hw:2,0)`, Kanal 1 + 2 |
-| `daw` | `Pro Audio` | wird gestartet und verkabelt | `KaraokeVocals.monitor`, Kanal 1 + 2 |
+Weitere Skripte, alle in `~/.local/bin`:
 
-Das Skript setzt außerdem den Standard-Sink zurück aufs UR22, weil ein
-Profilwechsel ihn auf den Onboard-Chip fallen lässt. Nach `daw` gehört die
-Mikrofonverzögerung neu eingemessen, nach `direct` wieder zurückgestellt — die
-beiden Wege haben unterschiedliche Latenz.
+```bash
+karaoke-status.sh              # Betriebsart, Verkabelung, die drei Pegel
+karaoke-pegel.py               # Fader anzeigen
+karaoke-pegel.py song -6       # Songton auf -6 dB
+karaoke-pegel.py mikro1 +2     # Mikro 1 um 2 dB lauter (führendes + = relativ)
+karaoke-reaper.sh              # Reaper korrekt starten (pw-jack + Projekt)
+karaoke-links.py list          # PipeWire-Verbindungen zeigen
+reaper-call.py <Funktion> ...  # beliebige ReaScript-Funktion aufrufen
+```
 
-### Grenze der PulseAudio-Anbindung
+Gesetzte Pegel landen sofort im Arbeitsprojekt
+`~/.config/karaoke/Karaoke.RPP` und überleben damit einen Reaper-Neustart;
+`karaoke-reaper.sh` öffnet genau dieses Projekt. Ohne das startet Reaper
+leer und die drei Spuren fehlen.
 
-Reaper steht auf `linux_audio_mode=3`, das ist die PulseAudio-Anbindung, und
-die **kann nur Stereo** — `linux_audio_nch_out=4` in der `reaper.ini` wird
-ignoriert, es bleibt bei `output_FL`/`output_FR` (nachgemessen). Reapers
-Ausgang kann deshalb entweder an die PA *oder* an Vocaluxe gehen, nicht an
-beides.
+**`karaoke-links.py` gibt es, weil `pw-link -l PORT` nicht nach `PORT`
+filtert**, sondern den ganzen Graphen ausgibt. Ein darauf gebautes `grep`
+meldet jede Verbindung als vorhanden und ein darauf gebautes Lösen trifft
+die falschen Ports. `pw-dump` liefert die Link-Objekte dagegen eindeutig.
 
-Solange das so ist, gilt:
+### Beides zusammen starten: Reaper vor Vocaluxe
 
-- Reaper füttert **KaraokeVocals**, nicht die PA.
-- Die Sänger hören sich über das **Direktmonitoring des UR22** (MIX-Regler am
-  Gerät), latenzfrei und an Reaper vorbei. Effekte auf der PA gibt es damit
-  nicht.
-- Der Songton geht direkt von Vocaluxe auf den Standard-Sink (UR22 Pro).
+Für den Spielbetrieb reicht ein Klick: **„Karaoke: Reaper + Vocaluxe
+starten"** auf dem Desktop (`~/Desktop/karaoke-start.desktop`, Wrapper unter
+`~/.local/bin/starter/karaoke-start`). Er macht genau das, was sonst von Hand
+nötig ist:
 
-**Auflösen lässt sich das nur mit `pipewire-jack`** (`apt install
-pipewire-jack`, dazu `qpwgraph`). Dann läuft Reaper als JACK-Client mit
-beliebig vielen Ports: Ausgänge 1/2 mit Hall auf die PA, Ausgänge 3/4 trocken
-auf KaraokeVocals, und `KaraokeSong` wird als dritte Spur mitgeschnitten. Reaper
-bringt JACK-Unterstützung mit (`JackIn`/`JackOut`, lädt `libjack.so.0`),
-`pipewire-jack` ersetzt genau diese Bibliothek.
+1. `karaoke-mode.sh reaper` — startet Reaper (mit dem Arbeitsprojekt) und
+   setzt das komplette Audio-Routing.
+2. `karaoke-status.sh` zur Kontrolle.
+3. Vocaluxe starten.
+
+**Die Reihenfolge Reaper-vor-Vocaluxe ist zwingend, nicht nur Gewohnheit.**
+`karaoke-mode.sh` stellt das PipeWire-Quantum global um und verschiebt
+laufende Wiedergabe-Streams (`route_playback_to`). Läuft Vocaluxe dabei schon,
+kann es sich aufhängen (beobachtet am 2026-09-15) — deshalb startet der
+Wrapper Reaper/PipeWire zuerst und erst danach Vocaluxe.
+
+Voraussetzung, die der Starter **nicht** abnimmt: UR22-`MIX`-Regler auf
+`DAW`, **bevor** der Starter läuft (siehe Startreihenfolge weiter oben bzw.
+`~/Pictures/karaoke-start-dark.png`). Fehlt das, bricht der Starter mit
+einer entsprechenden Meldung ab, statt stumm weiterzumachen.
+
+**Vocaluxes erster Startversuch nach einem unsauberen Ende** scheiterte früher
+wortlos (Ursache und Fix: „Falle: der erste Start nach einem unsauberen Ende
+scheitert"). Der Wrapper räumt weiter vor jedem Versuch `/tmp/.dotnet/shm` auf und
+probiert bei einem gescheiterten ersten Versuch ein zweites Mal — seit dem Fix
+Sicherheitsnetz, nicht mehr nötig. Gibt er auf, verweist er auf
+`~/.config/Vocaluxe/Logs/Vocaluxe.log`.
+
+### Das Reaper-Projekt
+
+Angelegt von `~/.config/REAPER/Scripts/karaoke-setup.lua` (ReaScript, ohne
+SWS lauffähig). Drei Spuren, alle scharfgeschaltet mit Input-Monitoring:
+
+| Spur | Eingang | Panorama |
+|---|---|---|
+| 1 „Mikro 1 (Spieler 1)" | JACK in1, mono | mittig |
+| 2 „Mikro 2 (Spieler 2)" | JACK in2, mono | mittig |
+| 3 „Song (Vocaluxe)" | JACK in3+4, stereo | mittig |
+
+**Mittig, nicht hart links/rechts.** Der alte Zweispur-Aufbau pannte die
+Sänger hart auseinander, weil das die Kanaltrennung für Vocaluxe war. Das
+erledigt jetzt der getrennte Abgriff — beide Sänger gehören auf beide Boxen.
+
+Die Hardware-Sends auf `out3`/`out4` stehen auf **pre-FX** und speisen
+`KaraokeVocals`. Sie sind **Reserve** und im Normalbetrieb ungenutzt:
+Vocaluxe hört über `karaokemics` direkt an der Hardware, weil seine
+PortAudio PipeWire-Quellen gar nicht sehen kann (siehe oben).
+
+Gebraucht würden sie, wenn der PitchTracker doch das *bearbeitete* Signal
+bekommen soll — etwa hinter einem Noise-Gate. Dann müsste Vocaluxe auf ein
+ALSA-PCM zeigen, das `KaraokeVocals` abgreift (zweiter Eintrag in
+`~/.asoundrc` nach demselben Muster, `capture_node "KaraokeVocals"`), und der
+Send-Modus in `karaoke-setup.lua` von pre-FX auf post-FX wechseln
+(`I_SENDMODE`: `1` → `3`).
+
+### Effektkette
+
+Auf den Mikrospuren liegen **Gate, Hochpass und Kompressor**, dazu ein
+**Hall-Bus** als vierter Fader und ein **Limiter** auf dem Master. Für die
+Bewertung ist das folgenlos — Vocaluxe hört an Reaper vorbei.
+
+```bash
+karaoke-fx.sh an|aus|status|neu     # aus = alles auf Bypass
+karaoke-pegel.py hall -12           # Hallmenge zuruecknehmen
+```
+
+Einstellungen, Messwerte und die Begründungen stehen in
+[`docs/effekt.md`](docs/effekt.md). Drei Dinge daraus, die leicht Zeit kosten:
+
+- Die ganze Kette hat **0,00 ms Zusatzlatenz**. Das ist kein Zufall, sondern
+  Auswahlkriterium: **ReaLimit bringt 10 ms mit** und scheidet für den
+  Live-Weg aus, `JS: Event Horizon` leistet dasselbe mit null.
+- **ReaEQs „High Pass"-Band filtert nicht.** Es steht in der Parameterliste,
+  nimmt eine Frequenz an und zeigt sie an — ist aber deaktiviert, und über
+  Parameter nicht scharf zu schalten. Im Einsatz ist deshalb
+  `JS: RBJ Highpass/Lowpass Filters`.
+- **`Track_GetPeakInfo` misst bei Input-Monitoring *vor* den Effekten.** Wer
+  damit prüft, ob ein Plugin wirkt, misst am falschen Ende. Messpunkt ist der
+  Master.
+
+### Reaper fernsteuern: MCP-Server und Bridge
+
+Installiert ist `twelvetake-reaper-mcp` (über `uv tool install`, Binary in
+`~/.local/bin`), registriert als MCP-Server `reaper`. Er redet mit Reaper
+über ein Lua-Skript, das in Reapers `defer`-Schleife läuft und eine
+Datei-Mailbox unter `~/.config/REAPER/Scripts/mcp_bridge_data/` pollt:
+`request_N.json` rein, `response_N.json` raus. Kein Port, kein Netz.
+
+Damit die Bridge immer läuft, lädt sie
+`~/.config/REAPER/Scripts/__startup.lua` bei jedem Reaper-Start — sonst
+müsste sie jedes Mal von Hand über die Action-Liste gestartet werden.
+
+Ohne MCP-Client geht dasselbe über `reaper-call.py`, das dieselbe Mailbox
+benutzt (eigener Slot 95, damit es dem MCP-Server nicht ins Gehege kommt):
+
+```bash
+reaper-call.py CountTracks 0
+reaper-call.py GetMediaTrackInfo_Value 0 D_VOL
+reaper-call.py Track_GetPeakInfo 0 0        # liefert bereits dB, nicht linear
+```
+
+Nützlich beim Debuggen: `reaper <skript>.lua` von der Kommandozeile führt
+das Skript in der **laufenden** Instanz aus.
+
+### Bedienpult: abgebaut
+
+Vom 2026-09-15 bis 2026-10-08 steuerte ein **Korg nanoKONTROL Studio** per
+Bluetooth (Mackie Control) die drei Fader. Abgebaut, weil die BLE-Verbindung
+im Betrieb träge war und wiederholt ausfiel — unabhängig vom in diesem
+Dokument an anderer Stelle beschriebenen Vocaluxe-Absturzverhalten. Das
+Mischpult läuft seitdem über **Reapers eigenes Web-UI** (`csurf_0=HTTP` in
+`reaper.ini`, erreichbar unter `http://localhost:8080`, `index.html`). Die
+ganze Firmware-/Pairing-/Keepalive-Fehlersuche vom Korg ist damit hinfällig
+und aus dieser Doku entfernt; der USB-Bluetooth-Dongle steckt noch, wird
+aber nicht mehr gebraucht.
 
 ### Fallen
 
-1. **Der Vocaluxe-Weg muss trocken bleiben.** Hall auf dem Signal, das in den
-   PitchTracker geht, verwischt die Tonhöhen — der Nachhall ist noch der alte
-   Ton, während schon der nächste gesungen wird. Effekte gehören auf den
+1. **Der Weg zu Vocaluxe muss trocken bleiben.** Hall auf dem Signal, das in
+   den PitchTracker geht, verwischt die Tonhöhen — der Nachhall ist noch der
+   alte Ton, während schon der nächste gesungen wird. Effekte gehören auf den
    PA-Weg. Gate, EQ und ein moderater Kompressor sind unbedenklich.
-2. **Latenz doppelt rechnen.** Der Umweg verzögert Mikrofon *und* Songton.
-   Beides zusammen gleicht die Mikrofonverzögerung in Vocaluxe aus (0–500 ms,
-   20-ms-Schritte). Nach jedem Umbau einmal den Delay-Test laufen lassen.
-3. **`AutoAssignMics` greift hier nicht.** Es sucht Gerätenamen mit `Usb` oder
-   `Wireless` (`CConfig.cs:732`); `KaraokeVocals.monitor` passt nicht. Im
-   DAW-Betrieb werden die Spieler von Hand zugewiesen.
-4. **CPU im Auge behalten.** Vier Kerne ohne HT, Vocaluxe zieht mit Video schon
-   65 % eines Kerns. Reaper-Puffer bei 512 lassen (`linux_audio_bsize`), nicht
-   auf 64 herunterdrehen — Xruns im Refrain sind schlimmer als 20 ms mehr
-   Delay, die ohnehin wegkonfiguriert werden.
+2. **Latenz doppelt rechnen.** In der Betriebsart `reaper` verzögert der
+   Umweg Mikrofon *und* Songton. Nach jedem Wechsel den Delay-Test im
+   Aufnahme-Screen laufen lassen und die Mikrofonverzögerung neu setzen —
+   die beiden Betriebsarten haben unterschiedliche Latenz.
+3. **CPU im Auge behalten.** Vier Kerne ohne HT, Vocaluxe zieht mit Video
+   schon 65 % eines Kerns. Das Quantum steht im Reaper-Modus auf 256;
+   knackst es, mit `KARAOKE_QUANTUM=512 karaoke-mode.sh reaper` neu schalten.
+4. **Das UR22 bleibt dauerhaft auf `pro-audio`.** Nur dort liegen die beiden
+   Eingänge als getrennte Ports an. Der alte Aufbau schaltete zwischen `HiFi`
+   und `Pro Audio` hin und her, damit PortAudio `hw:…` sieht — das ist
+   hinfällig, seit Vocaluxe über die PulseAudio-Host-API hört.
+
 
 ## Offen
 
@@ -1027,6 +1432,16 @@ bringt JACK-Unterstützung mit (`JackIn`/`JackOut`, lädt `libjack.so.0`),
 - **Pegel final einstellen**: beim *Singen* justieren, nicht beim Sprechen —
   Sprechen ist deutlich leiser und führt zu einer zu hohen Einstellung, die
   dann beim Singen clippt. Zielbereich 60–70 % Spitze.
+- **Den Reaper-Aufbau im Betrieb erproben.** Verkabelung, Umschalten und die
+  drei Fader sind geprüft, ein Testton läuft nachweislich durch Spur 3 bis in
+  den Master. Was **noch niemand gehört hat**, ist ein Abend damit: ob die
+  Latenz beim Selbsthören über die PA erträglich ist (Quantum 256 = 5,8 ms je
+  Block, Round-Trip ungemessen), ob es bei laufendem Video knackst, und ob
+  der Moduswechsel unter Zeitdruck wirklich in zwei Klicks sitzt. Bis dahin
+  ist `direct` die Betriebsart, auf die im Zweifel zurückzufallen ist.
+- **Mikrofonverzögerung neu einmessen**, getrennt für beide Betriebsarten.
+  `<MicDelay>` steht auf 200 ms und stammt aus dem alten Aufbau; der
+  Delay-Test im Aufnahme-Screen liefert den richtigen Wert.
 - **Das ffmpeg-Backend im Alltag erproben.** Ton und Bild laufen im Test
   gleichauf mit Acinerella, aber ein Testlauf ist kein Abend. Umschalten wie oben
   beschrieben; fällt über mehrere Abende nichts auf, kann Acinerella weg — dann
