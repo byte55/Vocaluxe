@@ -353,7 +353,7 @@ einer externen NTFS-Platte (1,8 TB, Partition `/dev/sdb4`, **UUID `01D37C5534494
 (`SongFolder` ist `/mnt/usb/Songs`). Der Gerätename `sdb` ist nicht stabil, deshalb nur über
 die UUID ansprechen.
 
-**Eingerichtet am 2026-10-08**, bei jedem Boot automatisch gemountet per `/etc/fstab` (Zeile von Hand mit Root eingetragen; getestet mit `sudo mount /mnt/usb`, ein echter Neustart steht noch aus):
+**Eingerichtet am 2026-10-08**, bei jedem Boot automatisch gemountet per `/etc/fstab` (Zeile von Hand mit Root eingetragen; getestet mit `sudo mount /mnt/usb` und **mit einem echten Neustart am 2026-10-08**: `mnt-usb.mount` lief sechs Sekunden nach dem Start, die Platte hing danach nur an `/mnt/usb`, nicht zusätzlich unter `/run/media`):
 
 ```
 UUID=01D37C5534494DC0  /mnt/usb  ntfs3  ro,nofail,x-systemd.device-timeout=10s,uid=1000,gid=1000,iocharset=utf8  0  0
@@ -1568,7 +1568,7 @@ aber nicht mehr gebraucht.
   zeitweise ohne Signal am Eingang (Mikrofon und Kabel getauscht, danach ok). **Ersatzkabel für USB
   (UR22), Ausgang zur Anlage und Mikrofone gehören in die Tasche.** Offen bleibt die Latenz beim
   Selbsthören über die PA (Quantum 256 = 5,8 ms je Block, Round-Trip ungemessen).
-- **Neustart-Probe für die USB-Platte:** Der `fstab`-Eintrag ist gesetzt und per Hand getestet, ob die Platte nach einem echten Boot von selbst unter `/mnt/usb` hängt, ist noch nicht geprüft (`karaoke-songfolders.sh`).
+- **Die USB-Platte hat eine Bad-Block-Liste.** Beim Mounten meldet der Kernel `ntfs3(sdb4): Volume contains 744 bad blocks in 2 fragments` — Cluster, die Windows irgendwann als defekt markiert hat. I/O-Fehler gab es im Boot vom 2026-10-08 keine, aber das ist die zweite Hälfte der Bibliothek ohne bekannte Kopie; ein SMART-Check (`smartmontools`, `sudo smartctl -a -d sat /dev/sdb`) und eine Sicherung der Songs stehen aus.
 - **Das Web-UI hat keinen Zugangsschutz** (siehe „Reaper fernsteuern") — am Veranstaltungsort
   im fremden Netz entweder in Reaper ein Passwort setzen oder den Port per `ufw` auf das Netz des
   Tablets beschränken. Bewusst vertagt.
