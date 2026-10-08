@@ -90,6 +90,12 @@ namespace Vocaluxe.Base
             get { return _StopRequested; }
         }
 
+        /// <summary>True once the program started tearing everything down.</summary>
+        public static bool ShutdownStarted
+        {
+            get { lock (_Lock) return _ShutdownStarted; }
+        }
+
         public static EExitReason? Reason
         {
             get { lock (_Lock) return _Reason; }

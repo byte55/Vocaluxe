@@ -496,6 +496,7 @@ namespace Vocaluxe.Lib.Draw
 
             while (_Run && !CExit.StopRequested)
             {
+                CHeartbeat.Tick();
                 _CheckQueue();
                 CVocaluxeServer.ProcessServerTasks();
 

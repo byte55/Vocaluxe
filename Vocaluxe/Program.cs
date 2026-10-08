@@ -336,8 +336,30 @@ namespace Vocaluxe
                 return;
             }
 
-            // Start Main Loop
+            // Start Main Loop. The heartbeat logs the state once a minute and reports a main loop that
+            // stands still (see CHeartbeat).
+            CHeartbeat.DescribeState = _DescribeGame;
+            CHeartbeat.Start();
             CDraw.MainLoop();
+        }
+
+        /// <summary>
+        ///     The game state for the heartbeat. Called on the main thread, so it may read game structures.
+        /// </summary>
+        private static string _DescribeGame()
+        {
+            var sb = new StringBuilder();
+            sb.Append(CExit.DescribeState != null ? CExit.DescribeState() : "n/a");
+            sb.Append("; audioStreams=").Append(CSound.GetStreamCount());
+            sb.Append(", videoStreams=").Append(CVideo.GetNumStreams());
+            sb.Append(", textures=").Append(CDraw.TextureCount());
+
+            CSongRequest[] queue = CSongRequests.GetAll();
+            CSongRequest playing = queue.FirstOrDefault(r => r.State == ESongRequestState.Playing.ToString());
+            sb.Append("; queue: ").Append(queue.Count(r => r.State == ESongRequestState.Waiting.ToString())).Append(" waiting");
+            if (playing != null)
+                sb.Append(", playing \"").Append(playing.Artist).Append(" - ").Append(playing.Title).Append("\" (").Append(string.Join(", ", playing.SingerNames)).Append(")");
+            return sb.ToString();
         }
 
         private static void _CloseProgram()
