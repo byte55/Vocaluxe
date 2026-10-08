@@ -353,7 +353,7 @@ einer externen NTFS-Platte (1,8 TB, Partition `/dev/sdb4`, **UUID `01D37C5534494
 (`SongFolder` ist `/mnt/usb/Songs`). Der Gerätename `sdb` ist nicht stabil, deshalb nur über
 die UUID ansprechen.
 
-Zielzustand: bei jedem Boot automatisch gemountet, per `/etc/fstab` (braucht Root):
+**Eingerichtet am 2026-10-08**, bei jedem Boot automatisch gemountet per `/etc/fstab` (Zeile von Hand mit Root eingetragen; getestet mit `sudo mount /mnt/usb`, ein echter Neustart steht noch aus):
 
 ```
 UUID=01D37C5534494DC0  /mnt/usb  ntfs3  ro,nofail,x-systemd.device-timeout=10s,uid=1000,gid=1000,iocharset=utf8  0  0
@@ -362,9 +362,13 @@ UUID=01D37C5534494DC0  /mnt/usb  ntfs3  ro,nofail,x-systemd.device-timeout=10s,u
 `ro`, weil Vocaluxe die Songs nur liest und eine unter Windows nicht sauber getrennte Platte
 (Dirty-Flag) so trotzdem eingebunden wird; zum Songs-Ändern `sudo mount -o remount,rw /mnt/usb`.
 `nofail` und das Timeout sorgen dafür, dass der Rechner auch ohne angesteckte Platte bootet.
-Solange der Eintrag fehlt, ist der Mount von Hand zu setzen (`sudo mount UUID=01D37C5534494DC0 /mnt/usb`
-mit denselben Optionen); GNOME mountet die Platte zwar selbst nach `/run/media/bytebeat/<UUID>`,
-aber dort sucht Vocaluxe nicht.
+**Falle beim Testen:** Steckt die Platte schon, hat GNOME sie beim Einstecken selbst **schreibbar**
+nach `/run/media/bytebeat/<UUID>` gemountet; dieselbe Partition lässt sich dann nicht noch einmal
+mit `ro` an `/mnt/usb` hängen (`already mounted`). Erst `sudo umount /run/media/bytebeat/<UUID>`,
+dann `sudo mount /mnt/usb`. Hält ein Prozess etwas darauf offen, scheitert das `umount` mit
+`target is busy`; `fuser -vm <Pfad>` zeigt, wer. Nicht mit `lsof +D` suchen: das läuft rekursiv
+über die ganze 1,8-TB-Platte und hält selbst ein Verzeichnis offen. Beim Booten kommt der
+`fstab`-Mount vor dem Login, GNOME findet die Platte dann schon eingebunden vor.
 
 **Fehlt der Mount, startet Vocaluxe ohne Meldung am Bildschirm mit der halben Bibliothek** (2807
 statt 5578 Songs). Deshalb prüfen `karaoke-start` und `karaoke-status.sh` vorher alle
@@ -1564,7 +1568,7 @@ aber nicht mehr gebraucht.
   zeitweise ohne Signal am Eingang (Mikrofon und Kabel getauscht, danach ok). **Ersatzkabel für USB
   (UR22), Ausgang zur Anlage und Mikrofone gehören in die Tasche.** Offen bleibt die Latenz beim
   Selbsthören über die PA (Quantum 256 = 5,8 ms je Block, Round-Trip ungemessen).
-- **USB-Platte beim Boot einbinden** (`/etc/fstab`-Zeile oben unter „Zweite Bibliothek").
+- **Neustart-Probe für die USB-Platte:** Der `fstab`-Eintrag ist gesetzt und per Hand getestet, ob die Platte nach einem echten Boot von selbst unter `/mnt/usb` hängt, ist noch nicht geprüft (`karaoke-songfolders.sh`).
 - **Das Web-UI hat keinen Zugangsschutz** (siehe „Reaper fernsteuern") — am Veranstaltungsort
   im fremden Netz entweder in Reaper ein Passwort setzen oder den Port per `ufw` auf das Netz des
   Tablets beschränken. Bewusst vertagt.
