@@ -368,7 +368,11 @@ namespace Vocaluxe.Base
                     foreach (string path in CConfig.SongFolders)
                     {
                         if (!Directory.Exists(path))
+                        {
+                            // Silent before: an unmounted USB disk looked like a smaller library.
+                            CLog.Warning("Song folder not found, skipping it", CLog.Params(new {Folder = path}));
                             continue;
+                        }
 
                         foreach (string file in CHelper.ListTextFiles(path, true, true))
                             fileSet.Add(file);
