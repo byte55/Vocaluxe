@@ -902,8 +902,33 @@ Per `kill -ABRT` bzw. `-SEGV` von außen geschickt, schreibt .NET zwar Dump und
 Crash-Report, **bleibt danach aber stehen** (`futex_do_wait`) statt zu enden; SIGTERM
 beendet es dann trotzdem. Wie sich ein echter Absturz verhält, ist nicht geprüft.
 
-Noch offen (Phase 3): Herzschlag-Zeile mit dem letzten bekannten Zustand und ein
-Wächter, der meldet, wenn die Hauptschleife steht.
+**Herzschlag und Wächter** (`Base/CHeartbeat.cs`, seit 2026-10-08). Einmal pro Minute steht
+eine `Heartbeat`-Zeile im Log: Laufzeit, FPS, CPU (in % eines Kerns), Working Set, verwalteter
+Heap, GC-Zähler, Threads, **offene Dateien** (`/proc/self/fd`), ob die Hauptschleife steht, und
+der Spielzustand (Screen, Audio-/Videostreams, Texturen, Warteliste mit laufendem Song und
+Sängern). Nach einem Absturz ist die letzte Zeile der letzte bekannte Zustand; ein Trend bei
+Speicher oder offenen Dateien zeigt ein Leck lange vor dem Ende.
+
+Gemessen im Hauptmenü mit 2807 Songs: 61 FPS, 25 % eines Kerns, **963 MB Working Set**
+(davon 481 MB verwalteter Heap), 355 offene Dateien, 30 Threads. Das ist der Ausgangswert,
+an dem man spätere Zeilen misst.
+
+Die Hauptschleife meldet sich jeden Frame. Steht sie länger als 5 s, kommt
+`Main loop stalled` mit dem Zustand des Hauptthreads aus dem Kernel (`state=D` mit einer
+Dateisystem-`wchan` = hängende Platte oder Netzlaufwerk, `S` in `futex_*` = eine Sperre, die
+keiner freigibt, `R` = beschäftigt statt blockiert) und dem letzten bekannten Spielzustand
+(höchstens 5 s alt, vom Hauptthread selbst gebaut, damit der Wächter nie in Spielstrukturen
+greift). Alle 30 s folgt `Main loop still stalled`, am Ende `Main loop resumed` mit der Dauer.
+Das ist der Fall „Vocaluxe lebt, ist aber eingefroren" (Web-Warteliste und Bild stehen, kein
+Absturz) — etwa das minimierte Fenster mit VSync, siehe unten. Der Wächter beginnt erst mit
+dem ersten Frame, das Laden beim Start (bis zu einer Minute mit der USB-Platte) zählt nicht.
+
+Hängt Vocaluxe wirklich, liefert `kill -ABRT <pid>` die Stacktraces aller Threads im
+`.crashreport.json` unter `Dumps/` (der Prozess bleibt danach stehen und lässt sich mit
+`kill -TERM` beenden); das ist der Weg zur Ursache, den das Log allein nicht zeigt.
+
+Getestet ist die Logik mit synthetischer Uhr (`CHeartbeatTest`) und live: Eine per SIGSTOP
+12 s eingefrorene Instanz meldete danach Stillstand (12 s) und Wiederaufnahme (13 s).
 
 ### Falle: VSync + minimiertes Fenster killt den Webserver
 
