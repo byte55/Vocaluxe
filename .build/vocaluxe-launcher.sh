@@ -24,6 +24,9 @@
 #   143  SIGTERM   (kill, logout, shutdown)
 #
 set -u
+# Job control: without it bash starts background jobs with SIGINT/SIGQUIT ignored, the app
+# would inherit that and never see Ctrl+C or SIGQUIT. The traps below forward them instead.
+set -m
 
 DIR="$(cd "$(dirname "$0")/Vocaluxe" && pwd)"
 DATA="${VOCALUXE_DATA_DIR:-$HOME/.config/Vocaluxe}"

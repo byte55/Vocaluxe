@@ -355,6 +355,8 @@ namespace Vocaluxe.Base.Server
 
         public static bool SendKeyEvent(string key)
         {
+            CExit.NoteRemoteKey(key);
+            CLog.Information("Web remote key", CLog.Params(new {Key = key}));
             bool result = false;
             string lowerKey = key.ToLower();
 

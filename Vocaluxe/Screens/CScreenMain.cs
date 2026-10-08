@@ -127,7 +127,10 @@ namespace Vocaluxe.Screens
                         }
 
                         if (_Buttons[_ButtonExit].Selected)
+                        {
+                            CExit.Request(EExitReason.MenuExit, "main menu: Exit button, activated with the keyboard (Enter)");
                             return false;
+                        }
 
                         break;
 
@@ -171,7 +174,10 @@ namespace Vocaluxe.Screens
                 }
 
                 if (_Buttons[_ButtonExit].Selected)
+                {
+                    CExit.Request(EExitReason.MenuExit, "main menu: Exit button, clicked with the mouse");
                     return false;
+                }
             }
 
             return true;

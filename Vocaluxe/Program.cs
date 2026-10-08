@@ -23,6 +23,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using SQLitePCL;
 using Vocaluxe.Base;
 using Vocaluxe.Base.Fonts;
@@ -63,6 +64,13 @@ namespace Vocaluxe
             AppDomain.CurrentDomain.UnhandledException += UnhandledExceptionHandler;
 #endif
             AppDomain.CurrentDomain.AssemblyResolve += _AssemblyResolver;
+
+            // Know why we end: signals shut down through the normal path instead of being ignored,
+            // and the exit reason is logged (see CExit).
+            AppDomain.CurrentDomain.ProcessExit += CExit.OnProcessExit;
+            TaskScheduler.UnobservedTaskException += (sender, e) =>
+                CLog.Warning("Unobserved task exception", CLog.Params(new {Error = e.Exception == null ? "n/a" : e.Exception.GetBaseException().ToString()}));
+            CExit.InstallSignalHandlers();
             // Windows only: add the side-by-side native lib folders to the DLL search PATH. On Linux/macOS
             // the native helpers are resolved via the loader (RPATH/LD_LIBRARY_PATH / dlopen by name), and
             // these are Windows-style ("libs\unmanaged\…", "win-x64\native") paths that don't apply there.
@@ -90,7 +98,10 @@ namespace Vocaluxe
 
             // Close program if there is another instance running
             if (!_EnsureSingleInstance())
+            {
+                Environment.ExitCode = 3; // no logger yet; the launcher sees the code
                 return;
+            }
 #if !DEBUG 
             try
             {
@@ -99,6 +110,7 @@ namespace Vocaluxe
             catch (Exception e)
             {
                 CLog.Fatal(e, "Unhandled error: {ErrorMessage}", CLog.Params(e.Message));
+                CExit.Request(EExitReason.FatalException, e.GetType().FullName + ": " + e.Message, 1);
             }
 #else
             _Run(args);
@@ -137,7 +149,10 @@ namespace Vocaluxe
                     ELogLevel.Information);
 
                 if (!CProgrammHelper.CheckRequirements())
+                {
+                    CExit.Request(EExitReason.StartupFailure, "CheckRequirements failed", 2);
                     return;
+                }
                 CProgrammHelper.Init();
                 
                 using (CBenchmark.Time("Init Program"))
@@ -269,6 +284,8 @@ namespace Vocaluxe
                     using (CBenchmark.Time("Init Screens"))
                     {
                         CGraphics.Init();
+                        CExit.DescribeState = () => "screen=" + (CGraphics.CurrentScreen != null ? CGraphics.CurrentScreen.GetType().Name : "none") +
+                                                    ", programState=" + CSettings.ProgramState;
                     }
 
 
@@ -314,6 +331,7 @@ namespace Vocaluxe
             catch (Exception e)
             {
                 CLog.Error(e, "Error on start up: {ExceptionMessage}", CLog.Params(e.Message), show:true);
+                CExit.Request(EExitReason.StartupFailure, e.GetType().FullName + ": " + e.Message, 2);
                 _CloseProgram();
                 return;
             }
@@ -324,6 +342,7 @@ namespace Vocaluxe
 
         private static void _CloseProgram()
         {
+            CExit.ShutdownBegin();
             // Unloading in reverse order
             try
             {
@@ -445,9 +464,12 @@ namespace Vocaluxe
             GC.Collect(); // Do a GC run here before we close logs to have finalizers run
             try
             {
+                CExit.LogShutdownComplete();
                 CLog.Close(); // Do this last, so we get all log entries!
             }
             catch (Exception) {}
+            if (CExit.ExitCode != 0)
+                Environment.ExitCode = CExit.ExitCode;
             Environment.Exit(Environment.ExitCode);
         }
 
@@ -456,6 +478,7 @@ namespace Vocaluxe
         {
             var e = (Exception)args.ExceptionObject;
             CLog.Fatal(e, "Unhandled exception: {ExceptionMessage}", CLog.Params(e.Message));
+            CExit.Request(EExitReason.FatalException, e.GetType().FullName + ": " + e.Message + " (runtime terminating: " + args.IsTerminating + ")", 1);
         }
 #endif
 
@@ -513,12 +536,26 @@ namespace Vocaluxe
             return assembly;
         }
 
-        private static readonly Mutex _Mutex = new Mutex(false, "Vocaluxe-SingleInstanceMutex");
+        // "Global\" matters on Linux: a plain name is private to the login session (its session id), and the
+        // starter launches Vocaluxe with setsid - every start lived in its own session and none of them could
+        // see another one, so a second start (desktop icon while the starter's copy runs) was never stopped.
+        private static readonly Mutex _Mutex = new Mutex(false, "Global\\Vocaluxe-SingleInstanceMutex");
 
         private static bool _EnsureSingleInstance()
         {
             // wait a few seconds in case that the instance is just shutting down
-            if (!_Mutex.WaitOne(TimeSpan.FromSeconds(2), false))
+            bool acquired;
+            try
+            {
+                acquired = _Mutex.WaitOne(TimeSpan.FromSeconds(2), false);
+            }
+            catch (AbandonedMutexException)
+            {
+                // The previous instance died without releasing it (kill -9, crash). We own it now; the
+                // crash marker reports the dead run in the log.
+                acquired = true;
+            }
+            if (!acquired)
             {
                 //TODO: put it into language file
                 Console.Error.WriteLine("Another Instance of Vocaluxe is already runnning!");

@@ -107,7 +107,25 @@ namespace Vocaluxe.Lib.Draw
         #region window/input event handlers
         private void _OnClosing(CancelEventArgs e)
         {
+            CExit.Request(EExitReason.WindowClose, _DescribeCloseRequest("Closing event"));
             _Run = false;
+        }
+
+        /// <summary>
+        ///     The window system asks the window to close - Alt+F4, the window's close button, Quit in the
+        ///     dock or overview, logout. They all arrive the same way (under GNOME/Wayland the compositor
+        ///     swallows Alt+F4 and sends xdg_toplevel.close), so the game cannot tell them apart.
+        /// </summary>
+        protected string _DescribeCloseRequest(string via)
+        {
+            try
+            {
+                return "close request from the window system (" + via + "); focused=" + _Window.IsFocused + ", windowState=" + _Window.WindowState + ", fullscreen=" + _Fullscreen;
+            }
+            catch (Exception e)
+            {
+                return "close request from the window system (" + via + "); window state unavailable: " + e.GetType().Name;
+            }
         }
 
         protected virtual void _OnResize(ResizeEventArgs e)

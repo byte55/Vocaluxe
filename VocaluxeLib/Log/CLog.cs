@@ -192,9 +192,19 @@ namespace VocaluxeLib.Log
                 (loggerToDispose as IDisposable)?.Dispose();
             }
 
-            // Delete the crash marker
-            File.Delete(_CrashMarkerFilePath);
-
+            // Delete the crash marker. Null if Init never ran (a very early startup failure) or Close
+            // already ran; closing must never throw, it is part of the shutdown.
+            string marker = _CrashMarkerFilePath;
+            _CrashMarkerFilePath = null;
+            if (marker != null)
+            {
+                try
+                {
+                    File.Delete(marker);
+                }
+                catch (IOException) {}
+                catch (UnauthorizedAccessException) {}
+            }
         }
 
         /// <summary>
@@ -212,7 +222,7 @@ namespace VocaluxeLib.Log
             _ShowReporterFunc?.Invoke(crash: crash, showContinue: showContinue, vocaluxeVersionTag: _CurrentVersion, log: _MainLogStringBuilder.ToString(), lastError: _FormatMessageTemplate(messageTemplate, propertyValues));
 
             // Delete the crash marker (we do not want to show this error again on the next restart)
-            if (!showContinue)
+            if (!showContinue && _CrashMarkerFilePath != null)
             {
                 File.Delete(_CrashMarkerFilePath);
             }

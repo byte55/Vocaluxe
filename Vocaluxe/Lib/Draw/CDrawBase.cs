@@ -494,7 +494,7 @@ namespace Vocaluxe.Lib.Draw
             else
                 _DoResize(); //Resize window if aspect ratio is incorrect
 
-            while (_Run)
+            while (_Run && !CExit.StopRequested)
             {
                 _CheckQueue();
                 CVocaluxeServer.ProcessServerTasks();

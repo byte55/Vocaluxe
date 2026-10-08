@@ -228,7 +228,10 @@ namespace Vocaluxe.Lib.Draw
             // "should close" flag every frame. Once _Run is false, CDraw.MainLoop returns and
             // Program._CloseProgram shuts everything down (Environment.Exit).
             if (_Window.IsExiting)
+            {
+                CExit.Request(EExitReason.WindowClose, _DescribeCloseRequest("IsExiting flag polled"));
                 _Run = false;
+            }
         }
 
         public int GetScreenWidth()

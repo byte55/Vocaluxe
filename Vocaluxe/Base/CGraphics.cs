@@ -197,14 +197,30 @@ namespace Vocaluxe.Base
 
             if (CSettings.ProgramState != EProgramState.EditTheme)
             {
-                run &= _HandleInputs(keys, mouse);
-                run &= _Update();
+                if (!_HandleInputs(keys, mouse))
+                {
+                    CExit.Request(EExitReason.MenuExit, "input handler of " + CurrentScreen.GetType().Name + " ended the program");
+                    run = false;
+                }
+                if (!_Update())
+                {
+                    CExit.Request(EExitReason.MenuExit, "UpdateGame of " + CurrentScreen.GetType().Name + " ended the program");
+                    run = false;
+                }
                 CParty.UpdateGame();
             }
             else
             {
-                run &= _HandleInputThemeEditor(keys, mouse);
-                run &= _Update();
+                if (!_HandleInputThemeEditor(keys, mouse))
+                {
+                    CExit.Request(EExitReason.MenuExit, "theme editor input ended the program");
+                    run = false;
+                }
+                if (!_Update())
+                {
+                    CExit.Request(EExitReason.MenuExit, "UpdateGame of " + CurrentScreen.GetType().Name + " ended the program");
+                    run = false;
+                }
             }
 
             return run;
@@ -376,6 +392,7 @@ namespace Vocaluxe.Base
             {
                 if (!eventsAvailable)
                     keyEvent = inputKeyEvent;
+                CExit.NoteKey(keyEvent);
 
                 if (keyEvent.IsArrowKey() || keyEvent.Key == Keys.NumPad0 || keyEvent.Key == Keys.D0 || keyEvent.Key == Keys.Add)
                 {
@@ -508,6 +525,7 @@ namespace Vocaluxe.Base
             {
                 if (!eventsAvailable)
                     mouseEvent = inputMouseEvent;
+                CExit.NoteMouse(mouseEvent);
 
                 if (mouseEvent.Wheel != 0)
                     _Cursor.Activate();
