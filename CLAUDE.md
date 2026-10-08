@@ -1512,8 +1512,8 @@ Standardseite aus `~/opt/REAPER/Plugins/reaper_www_root/`. Darin liegen zwei Dat
 (zusammen mit `reaper.ini`, dem Projekt, den Reaper-Skripten, der Audio-Konfiguration, den
 Starter-Skripten, den Desktop-Startern und der `CLAUDE.md` des Rechners): `./backup.sh` kopiert
 den Live-Stand hinein und committet, `./restore.sh` spielt ihn zurück. Wer die Seite ändert,
-ruft danach `backup.sh` auf. Das Repo ist bisher **nur lokal**; ein Plattenschaden nähme beides
-mit.
+ruft danach `backup.sh` auf, das auch pusht. Das Repo liegt zusätzlich **privat auf GitHub**
+(`byte55/karaoke-setup`), ein Plattenschaden nähme die Sicherung also nicht mit.
 
 **Zugangsschutz gibt es keinen.** Reaper lauscht auf allen Schnittstellen (`0.0.0.0:8080`), im
 Netz am Veranstaltungsort kann jeder, der die Adresse kennt, die Fader bedienen. Abhilfe wäre
